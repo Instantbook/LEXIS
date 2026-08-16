@@ -142,7 +142,7 @@ function gradeCard(c, g){
 // ── Playback engine: sentence-by-sentence for reliable pause/resume on iOS ──
 let player = { pid:null, title:"", sentences:[], idx:0, playing:false, token:0 };
 
-function speak(text, rate, onend){
+function speakText(text, rate, onend){
   try{
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
@@ -160,7 +160,7 @@ function speakChain(){
   const tk = player.token;
   if(!player.playing) { render(); return; }
   if(player.idx >= player.sentences.length){ player.playing=false; player.idx=0; render(); return; }
-  speak(player.sentences[player.idx], 0.92, () => {
+  speakText(player.sentences[player.idx], 0.92, () => {
     if(player.token !== tk || !player.playing) return; // cancelled or paused
     player.idx++;
     speakChain();
@@ -486,7 +486,7 @@ window.delPassage = id => {
   if(activeP && activeP.id===id) activeP = null;
   render();
 };
-window.speak = (t, r) => { if(player.playing) pausePlayback(); speak(t, r); };
+window.speak = (t, r) => { if(player.playing) pausePlayback(); speakText(t, r); };
 window.speakPassage = () => window.togglePlay();
 window.saveLookup = saveLookup;
 window.answer = answer;
