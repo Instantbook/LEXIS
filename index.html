@@ -139,7 +139,9 @@ function gradeCard(c, g){
 }
 
 // ── TTS (on-device) ──
-let speaking = false;
+// ── Playback engine: sentence-by-sentence for reliable pause/resume on iOS ──
+let player = { pid:null, title:"", sentences:[], idx:0, playing:false, token:0 };
+
 function speak(text, rate, onend){
   try{
     speechSynthesis.cancel();
@@ -150,6 +152,36 @@ function speak(text, rate, onend){
     u.onend = u.onerror = () => { if(onend) onend(); };
     speechSynthesis.speak(u);
   }catch(e){ console.error(e); if(onend) onend(); }
+}
+
+function splitSentences(t){ return t.split(/(?<=[.;!?·…])\s+/).filter(s=>s.trim()); }
+
+function speakChain(){
+  const tk = player.token;
+  if(!player.playing) { render(); return; }
+  if(player.idx >= player.sentences.length){ player.playing=false; player.idx=0; render(); return; }
+  speak(player.sentences[player.idx], 0.92, () => {
+    if(player.token !== tk || !player.playing) return; // cancelled or paused
+    player.idx++;
+    speakChain();
+  });
+}
+
+function startPlayback(p){
+  player = { pid:p.id, title:p.title, sentences:splitSentences(p.text), idx:0, playing:true, token:player.token+1 };
+  speakChain(); render();
+}
+function pausePlayback(){
+  player.playing = false; player.token++;
+  speechSynthesis.cancel(); render();
+}
+function resumePlayback(){
+  player.playing = true; player.token++;
+  speakChain(); render();
+}
+function stopPlayback(){
+  player.playing = false; player.idx = 0; player.pid = null; player.token++;
+  speechSynthesis.cancel(); render();
 }
 if("speechSynthesis" in window) speechSynthesis.getVoices(); // warm up voice list
 
@@ -290,6 +322,19 @@ function render(){
 
   let html = "";
 
+  // Mini player bar: audio active but not viewing that passage
+  const audioActive = player.pid && (player.playing || player.idx > 0);
+  const viewingIt = tab === "read" && activeP && activeP.id === player.pid;
+  if (audioActive && !viewingIt) {
+    html += `<div class="card row" style="padding:12px 16px;border-left:4px solid #C89B3C;">
+      <div style="min-width:0;"><div class="muted" style="letter-spacing:.05em;">${player.playing ? "NOW PLAYING" : "PAUSED"}</div>
+      <div class="display" style="font-size:16px;color:#1E3A5C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(player.title)}</div></div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button class="btn sec" style="padding:8px 12px;font-size:13px;" onclick="${player.playing ? "pausePB()" : "resumePB()"}">${player.playing ? "⏸" : "▶"}</button>
+        <button class="btn sec" style="padding:8px 12px;font-size:13px;color:#B4432F;border-color:#B4432F;" onclick="stopPB()">■</button>
+      </div></div>`;
+  }
+
   if(tab==="read" && !activeP){
     html += `<div style="padding-top:10px;">`;
     html += `<div class="card" style="padding:16px;">
@@ -317,7 +362,9 @@ function render(){
       <button class="chip" onclick="closeP()">← Library</button>
       <div class="card">
         <div class="row"><h2 class="display" style="font-size:22px;margin:0;color:#1E3A5C;">${esc(activeP.title)}</h2>
-        <button class="btn sec" style="padding:8px 14px;font-size:13px;flex-shrink:0;" onclick="speakPassage()">${speaking ? "■ Stop" : "▶ Listen"}</button></div>
+        <button class="btn sec" style="padding:8px 14px;font-size:13px;flex-shrink:0;" onclick="togglePlay()">${
+          (player.pid===activeP.id && player.playing) ? "⏸ Pause" :
+          (player.pid===activeP.id && player.idx>0) ? "▶ Resume" : "▶ Listen"}</button></div>
         <p class="passage" id="passageBody">${passageHTML(activeP)}</p>
         <div class="muted">Tap any word. Gold underline = already in your deck.</div>
       </div>
@@ -407,22 +454,27 @@ function render(){
 }
 
 // ── Actions exposed to inline handlers ──
-window.setTab = t => { if(speaking){ speechSynthesis.cancel(); speaking=false; } tab = t; if(t==="review") startReview(); render(); };
+window.setTab = t => { tab = t; if(t==="review") startReview(); render(); };
 window.openP = id => { activeP = allPassages().find(p=>p.id===id); lookupState = null; render(); window.scrollTo(0,0); };
-window.closeP = () => { if(speaking){ speechSynthesis.cancel(); speaking=false; } activeP = null; lookupState = null; render(); };
+window.closeP = () => { activeP = null; lookupState = null; render(); };
+window.togglePlay = () => {
+  if(player.pid === activeP.id && player.playing) pausePlayback();
+  else if(player.pid === activeP.id && player.idx > 0) resumePlayback();
+  else startPlayback(activeP);
+};
+window.pausePB = pausePlayback;
+window.resumePB = resumePlayback;
+window.stopPB = stopPlayback;
 window.delPassage = id => {
   if(!confirm("Delete this cached passage? Words you saved from it stay in your deck.")) return;
+  if(player.pid === id) stopPlayback();
   customLib = customLib.filter(p=>p.id!==id);
   save(LS.lib, customLib);
   if(activeP && activeP.id===id) activeP = null;
   render();
 };
-window.speak = speak;
-window.speakPassage = () => {
-  if(speaking){ speechSynthesis.cancel(); speaking = false; render(); return; }
-  speaking = true; render();
-  speak(activeP.text, 0.92, () => { speaking = false; render(); });
-};
+window.speak = (t, r) => { if(player.playing) pausePlayback(); speak(t, r); };
+window.speakPassage = () => window.togglePlay();
 window.saveLookup = saveLookup;
 window.answer = answer;
 window.delCard = delCard;
