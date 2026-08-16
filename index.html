@@ -203,14 +203,24 @@ async function callClaude(prompt, maxTokens){
   return data.content.filter(b=>b.type==="text").map(b=>b.text).join("\n").replace(/```json|```/g,"").trim();
 }
 
+const LEVEL_SPECS = {
+  A1: "an absolute beginner. Use ONLY the most common everyday words, very short simple sentences (5–8 words), present tense mostly, lots of repetition of key words. 60–90 words total.",
+  A2: "an elementary learner. Use simple sentences, high-frequency vocabulary, basic past and future tenses. 80–110 words total.",
+  B1: "an intermediate learner. Use everyday conversational Greek with some new vocabulary, varied but straightforward sentence structure. 110–140 words total.",
+  B2: "an upper-intermediate heritage learner who understands everyday speech but wants to grow vocabulary. Use natural, idiomatic Greek as a native writer would; roughly 10–20% of content words should stretch them. 120–160 words total.",
+  C1: "an advanced learner. Use sophisticated, editorial-register Greek with rich vocabulary, subordinate clauses, and formal constructions. 130–170 words total.",
+  C2: "a near-native learner. Use elegant, demanding Greek — literary or scholarly register, idioms, learned (λόγιες) words and nuanced constructions. 130–170 words total."
+};
+
 async function generateAndCache(topic){
   if(!settings.apiKey){ genMsg = "Add your Anthropic API key in Settings first."; render(); return; }
   if(!navigator.onLine){ genMsg = "You're offline — generation needs internet."; render(); return; }
   genBusy = true; genMsg = "Generating and glossing a new passage…"; render();
   const due = deck.filter(c=>c.due<=Date.now()).slice(0,8).map(c=>c.lemma);
-  const prompt = `You are a Greek tutor creating material for a heritage learner (level ${settings.level}) who understands everyday speech but wants to grow vocabulary.
+  const spec = LEVEL_SPECS[settings.level] || LEVEL_SPECS.B2;
+  const prompt = `You are a Greek tutor creating reading material for ${spec}
 
-Write a natural, idiomatic Modern Greek passage of 120–160 words on: "${topic}".${due.length ? ` Where natural, include some of these study words: ${due.join(", ")}.` : ""}
+Write a Modern Greek passage on: "${topic}".${(due.length && !["A1","A2"].includes(settings.level)) ? ` Where natural, include some of these study words: ${due.join(", ")}.` : ""}
 
 Then gloss EVERY content word in the passage (skip only articles, common particles and prepositions). For each, give: the exact surface form as it appears (lowercase), the dictionary lemma with article, a concise English translation as used in context, and optionally a short usage note.
 
@@ -339,6 +349,9 @@ function render(){
     html += `<div style="padding-top:10px;">`;
     html += `<div class="card" style="padding:16px;">
       <div style="font-weight:700;color:#1E3A5C;">Generate a new passage <span class="muted">(online, cached for offline)</span></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;" id="genLevels">
+        ${["A1","A2","B1","B2","C1","C2"].map(l=>`<button class="chip${settings.level===l?" on":""}" onclick="setLevel('${l}')">${l}</button>`).join("")}
+      </div>
       <div style="display:flex;gap:8px;margin-top:10px;">
         <input type="text" id="topicIn" placeholder="Topic — e.g. Greek news, Porto Cheli, the Argolid…" style="flex:1;">
         <button class="btn" onclick="genGo()" ${genBusy?"disabled":""}>${genBusy?"…":"Go"}</button>
@@ -421,7 +434,7 @@ function render(){
       <input type="password" id="keyIn" placeholder="sk-ant-…" value="${esc(settings.apiKey)}">
       <div style="margin-top:10px;">
         <label class="muted">My level for generated texts</label>
-        <select id="lvlIn">${["B1","B2","C1"].map(l=>`<option ${settings.level===l?"selected":""}>${l}</option>`).join("")}</select>
+        <select id="lvlIn">${["A1","A2","B1","B2","C1","C2"].map(l=>`<option ${settings.level===l?"selected":""}>${l}</option>`).join("")}</select>
       </div>
       <button class="btn" style="margin-top:14px;width:100%;" onclick="saveSettings()">Save settings</button>
       <div id="setMsg" class="muted" style="margin-top:8px;"></div>
@@ -479,6 +492,12 @@ window.saveLookup = saveLookup;
 window.answer = answer;
 window.delCard = delCard;
 window.genGo = () => { const t = $("topicIn").value.trim() || "Greek current affairs"; generateAndCache(t); };
+window.setLevel = l => {
+  const typed = $("topicIn") ? $("topicIn").value : "";
+  settings.level = l; save(LS.settings, settings);
+  render();
+  if($("topicIn")) $("topicIn").value = typed;
+};
 window.doLive = () => { if(lookupState) liveLookup(lookupState.surface, lookupState.sentence || "", activeP); };
 window.saveSettings = () => {
   settings.apiKey = $("keyIn").value.trim();
