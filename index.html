@@ -65,6 +65,7 @@
 
 <script>
 "use strict";
+const APP_VERSION = "v7";
 // ═══════════════════════════════════════════════════════════
 // ΛΕΞΙΣ — offline-first Greek vocabulary builder (PWA)
 // Bundled library works forever offline. With an Anthropic API
@@ -161,9 +162,11 @@ function speakChain(){
   const tk = player.token;
   if(!player.playing) { render(); return; }
   if(player.idx >= player.sentences.length){ player.playing=false; player.idx=0; render(); return; }
-  speakText(player.sentences[player.idx], 0.92, () => {
-    if(player.token !== tk || !player.playing) return; // cancelled or paused
-    player.idx++;
+  const myIdx = player.idx;
+  speakText(player.sentences[myIdx], 0.92, () => {
+    if(player.token !== tk || !player.playing) return;   // cancelled or paused
+    if(player.idx !== myIdx) return;                     // duplicate event — already advanced
+    player.idx = myIdx + 1;
     speakChain();
   }, true);
 }
@@ -327,7 +330,7 @@ function lookupHTML(){
 function render(){
   $("statSaved").textContent = deck.length;
   $("statDue").textContent = dueCards().length;
-  $("netStatus").textContent = navigator.onLine ? (settings.apiKey ? "ONLINE · AI READY" : "ONLINE · OFFLINE LIBRARY") : "OFFLINE MODE";
+  $("netStatus").textContent = (navigator.onLine ? (settings.apiKey ? "ONLINE · AI READY" : "ONLINE · OFFLINE LIBRARY") : "OFFLINE MODE") + " · " + APP_VERSION;
 
   const due = dueCards().length;
   $("tabs").innerHTML = [["read","Read"],["review",`Review${due?` (${due})`:""}`],["words","My words"],["settings","⚙ Settings"]]
