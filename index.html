@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1E3A5C">
+<title>ΛΕΞΙΣ — Greek Vocabulary</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=GFS+Didot&family=Source+Sans+3:wght@400;600;700&display=swap');
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin:0; min-height:100vh; background:linear-gradient(180deg,#F7F5F0 0%,#EFEDE6 100%);
+         font-family:'Source Sans 3','Noto Sans',system-ui,sans-serif; color:#1F2933; }
+  .display { font-family:'GFS Didot','Georgia',serif; }
+  header { background:#1E3A5C; color:#F7F5F0; padding:calc(16px + env(safe-area-inset-top)) 16px 14px; }
+  .hrow { max-width:680px; margin:0 auto; display:flex; justify-content:space-between; align-items:baseline; }
+  .shell { max-width:680px; margin:0 auto; padding:0 16px calc(96px + env(safe-area-inset-bottom)); }
+  .tabs { max-width:680px; margin:0 auto; display:flex; gap:8px; padding:14px 16px 4px; flex-wrap:wrap; }
+  .chip { padding:8px 14px; border-radius:999px; border:1.5px solid rgba(30,58,92,.25); background:transparent;
+          color:#1E3A5C; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; font-family:inherit; }
+  .chip.on { border-color:#1E3A5C; background:#1E3A5C; color:#F7F5F0; }
+  .btn { padding:12px 20px; border-radius:10px; border:none; background:#1E3A5C; color:#F7F5F0;
+         font-weight:600; font-size:15px; cursor:pointer; font-family:inherit; }
+  .btn.sec { background:transparent; border:1.5px solid #1E3A5C; color:#1E3A5C; }
+  .btn:disabled { opacity:.55; }
+  .card { background:#fff; border-radius:14px; padding:20px; margin-top:12px;
+          box-shadow:0 1px 3px rgba(31,41,51,.08),0 8px 24px rgba(31,41,51,.05); }
+  .word { cursor:pointer; border-bottom:1px dotted rgba(30,58,92,.35); border-radius:2px; }
+  .word.known { border-bottom:2px solid #C89B3C; background:rgba(200,155,60,.12); }
+  .passage { font-size:19px; line-height:2.05; margin:14px 0 4px; }
+  .muted { font-size:12.5px; color:#6B7683; }
+  .lookup { border-left:4px solid #C89B3C; }
+  .grades { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:16px; }
+  .grades button { padding:12px 4px; border-radius:10px; border:none; color:#fff; font-weight:700;
+                   font-size:14px; cursor:pointer; font-family:inherit; }
+  input[type=text], input[type=password], select {
+    width:100%; padding:12px; border-radius:10px; border:1.5px solid rgba(30,58,92,.3);
+    font-size:15px; font-family:inherit; background:#fff; }
+  .row { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .badge { font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; letter-spacing:.04em; }
+  .badge.bundled { background:rgba(30,58,92,.1); color:#1E3A5C; }
+  .badge.cached { background:rgba(200,155,60,.18); color:#8A6D1F; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<header>
+  <div class="hrow">
+    <div>
+      <div class="display" style="font-size:30px; letter-spacing:.12em;">ΛΕΞΙΣ</div>
+      <div style="font-size:12px; opacity:.75; letter-spacing:.06em;" id="netStatus">READ · TAP · REMEMBER</div>
+    </div>
+    <div style="text-align:right; font-size:13px; line-height:1.5;">
+      <div><b style="color:#E8C97A" id="statSaved">0</b> words saved</div>
+      <div><b style="color:#E8C97A" id="statDue">0</b> due for review</div>
+    </div>
+  </div>
+</header>
+
+<div class="tabs" id="tabs"></div>
+<div class="shell" id="main"></div>
+
+<script>
+"use strict";
+// ═══════════════════════════════════════════════════════════
+// ΛΕΞΙΣ — offline-first Greek vocabulary builder (PWA)
+// Bundled library works forever offline. With an Anthropic API
+// key + internet, generate new fully-glossed passages and cache
+// them locally for later offline reading.
+// ═══════════════════════════════════════════════════════════
+
+const DAY = 86400000;
+const LS = { deck:"lexis.deck", lib:"lexis.customLib", settings:"lexis.settings" };
+
+// ── Core function-word dictionary ──
+const CORE = {"ο":"the (masc.)","η":"the (fem.)","το":"the (neut.)","οι":"the (pl.)","τα":"the (neut. pl.)","του":"of the / his","της":"of the / her","των":"of the (pl.)","τον":"the (masc. acc.)","την":"the (fem. acc.)","τη":"the (fem. acc.)","τις":"the (fem. pl. acc.)","τους":"the / them / their","στο":"in/at/to the","στη":"in/at/to the","στην":"in/at/to the","στον":"in/at/to the","στα":"in/at/to the (pl.)","στις":"in/at/to the (pl.)","στους":"in/at/to the (pl.)","σε":"in, at, to","με":"with","από":"from, by","για":"for, about","και":"and","κι":"and","να":"to (subjunctive)","θα":"will (future)","δεν":"not","δε":"not","μη":"don't, not","μην":"don't, not","που":"that, which, who","πως":"that","ότι":"that","ώστε":"so that","αλλά":"but","μα":"but","όμως":"however","ενώ":"while, whereas","καθώς":"as, while","όταν":"when","αν":"if","ούτε":"neither, nor","όπου":"where","όπως":"as, like","είναι":"is, are","ήταν":"was, were","έχει":"has","έχουν":"have","είχε":"had","μας":"us, our","σας":"you, your (pl.)","μου":"me, my","σου":"you, your","εμείς":"we","αυτό":"this, it","αυτός":"he, this","αυτή":"she, this","μια":"a, one (fem.)","ένα":"a, one (neut.)","ένας":"a, one (masc.)","κάθε":"each, every","πολύ":"very, much","πολλά":"many","πιο":"more","σαν":"like, as","ως":"as","τότε":"then","σήμερα":"today","πάνω":"up, on","κάτω":"down, under","μέσα":"inside","έξω":"outside","όλη":"all, whole","όλοι":"everyone","όλα":"everything","λίγο":"a little","πριν":"before","μετά":"after","ακόμα":"still, yet","εκεί":"there","εδώ":"here","τόσο":"so (much)","όσο":"as much as","παρά":"despite","ή":"or","μέχρι":"until","ποτέ":"never","πάντα":"always","κάτι":"something","επειδή":"because","ώρα":"hour, time","νέο":"new","νερά":"water (pl.)","νερό":"water","νησί":"island","χώρες":"countries","φρέσκο":"fresh","άρχισαν":"they began","βγήκαμε":"we went out","δικές":"one's own","σημαντικό":"significant","ελληνικής":"Greek (gen.)","φτάνει":"reaches; enough"};
+
+// ── Bundled passages (gloss: surface|lemma|translation|note) ──
+const BUNDLED = [
+{id:"panigiri",level:"B1",topic:"Village life",title:"Το πανηγύρι του χωριού",
+text:"Κάθε καλοκαίρι, στις δεκαπέντε Αυγούστου, το χωριό μας γιορτάζει το μεγάλο πανηγύρι της Παναγίας. Από το πρωί οι καμπάνες χτυπούν χαρούμενα και οι γυναίκες στολίζουν την εκκλησία με λουλούδια. Το βράδυ, στην πλατεία, στήνονται τραπέζια κάτω από τα πλατάνια. Οι οργανοπαίχτες κουρδίζουν τα όργανά τους και σιγά σιγά αρχίζει ο χορός. Ψήνονται σουβλάκια και αρνιά στη σούβλα, ενώ το κρασί ρέει άφθονο. Οι ξενιτεμένοι επιστρέφουν από το εξωτερικό για να βρεθούν με τους δικούς τους. Μικροί και μεγάλοι πιάνονται χέρι χέρι και χορεύουν μέχρι τα ξημερώματα. Το πανηγύρι δεν είναι απλώς μια γιορτή· είναι η ψυχή του χωριού.",
+gloss:["καλοκαίρι|το καλοκαίρι|summer","δεκαπέντε|δεκαπέντε|fifteen","αυγούστου|ο Αύγουστος|August (genitive)","χωριό|το χωριό|village","γιορτάζει|γιορτάζω|to celebrate","μεγάλο|μεγάλος|big, great","πανηγύρι|το πανηγύρι|village festival, feast|Usually held on a saint's day","παναγίας|η Παναγία|the Virgin Mary|Δεκαπενταύγουστος: the great Aug 15 feast","πρωί|το πρωί|morning","καμπάνες|η καμπάνα|bell","χτυπούν|χτυπώ|to ring, to strike","χαρούμενα|χαρούμενα|joyfully","γυναίκες|η γυναίκα|woman","στολίζουν|στολίζω|to decorate, adorn","εκκλησία|η εκκλησία|church","λουλούδια|το λουλούδι|flower","βράδυ|το βράδυ|evening","πλατεία|η πλατεία|(village) square","στήνονται|στήνομαι|to be set up","τραπέζια|το τραπέζι|table","πλατάνια|το πλατάνι|plane tree","οργανοπαίχτες|ο οργανοπαίχτης|folk musician","κουρδίζουν|κουρδίζω|to tune (an instrument)","όργανά|το όργανο|instrument","σιγά|σιγά σιγά|slowly, little by little","αρχίζει|αρχίζω|to begin","χορός|ο χορός|dance","ψήνονται|ψήνομαι|to be grilled, roasted","σουβλάκια|το σουβλάκι|skewered grilled meat","αρνιά|το αρνί|lamb","σούβλα|η σούβλα|roasting spit","κρασί|το κρασί|wine","ρέει|ρέω|to flow","άφθονο|άφθονος|abundant, plentiful","ξενιτεμένοι|ο ξενιτεμένος|emigrant living abroad|From ξενιτιά — life in foreign lands","επιστρέφουν|επιστρέφω|to return","εξωτερικό|το εξωτερικό|abroad, overseas","βρεθούν|βρίσκομαι|to meet, get together","δικούς|οι δικοί μου|one's own people, family","μικροί|μικρός|small, young","μεγάλοι|μεγάλος|big; grown-up","πιάνονται|πιάνομαι|to take hold, join","χέρι|το χέρι|hand","χορεύουν|χορεύω|to dance","ξημερώματα|τα ξημερώματα|daybreak, the small hours","απλώς|απλώς|simply, merely","γιορτή|η γιορτή|celebration, feast day","ψυχή|η ψυχή|soul"]},
+{id:"giagia",level:"B1",topic:"Food",title:"Η κουζίνα της γιαγιάς",
+text:"Η γιαγιά μου ξυπνούσε πάντα με το χάραμα. Ζύμωνε ψωμί στη σκάφη και το έψηνε στον ξυλόφουρνο της αυλής. Η μυρωδιά απλωνόταν σε όλη τη γειτονιά. Το μεσημέρι μαγείρευε φαγητά κατσαρόλας: φασολάκια λαδερά, γεμιστά, μοσχάρι κοκκινιστό. Τα μυστικά της ήταν απλά — φρέσκα υλικά από τον κήπο, λάδι από τις δικές μας ελιές και υπομονή. Ποτέ δεν μετρούσε με ακρίβεια· έβαζε «όσο πάρει». Εμείς τα παιδιά κλέβαμε κομμάτια ζεστό ψωμί και μας κυνηγούσε γελώντας με την ποδιά της. Σήμερα προσπαθώ να φτιάξω τις συνταγές της, μα κάτι πάντα λείπει.",
+gloss:["γιαγιά|η γιαγιά|grandmother","ξυπνούσε|ξυπνώ|to wake up","χάραμα|το χάραμα|dawn, first light","ζύμωνε|ζυμώνω|to knead","ψωμί|το ψωμί|bread","σκάφη|η σκάφη|kneading trough","έψηνε|ψήνω|to bake, roast","ξυλόφουρνο|ο ξυλόφουρνος|wood-fired oven","αυλής|η αυλή|courtyard, yard","μυρωδιά|η μυρωδιά|smell, aroma","απλωνόταν|απλώνομαι|to spread","γειτονιά|η γειτονιά|neighborhood","μεσημέρι|το μεσημέρι|midday","μαγείρευε|μαγειρεύω|to cook","φαγητά|το φαγητό|food, dish","κατσαρόλας|η κατσαρόλα|cooking pot|φαγητά κατσαρόλας: homestyle stove-top dishes","φασολάκια|τα φασολάκια|green beans","λαδερά|λαδερός|cooked in olive oil|Τα λαδερά: a whole class of Greek dishes","γεμιστά|τα γεμιστά|stuffed vegetables","μοσχάρι|το μοσχάρι|veal, beef","κοκκινιστό|κοκκινιστός|braised in tomato sauce","μυστικά|το μυστικό|secret","απλά|απλός|simple","φρέσκα|φρέσκος|fresh","υλικά|το υλικό|ingredient, material","κήπο|ο κήπος|garden","λάδι|το λάδι|(olive) oil","ελιές|η ελιά|olive; olive tree","υπομονή|η υπομονή|patience","μετρούσε|μετρώ|to measure","ακρίβεια|η ακρίβεια|precision, accuracy","έβαζε|βάζω|to put, add","πάρει|όσο πάρει|as much as it takes|The classic grandmother's measurement","παιδιά|το παιδί|child","κλέβαμε|κλέβω|to steal","κομμάτια|το κομμάτι|piece","ζεστό|ζεστός|warm, hot","κυνηγούσε|κυνηγώ|to chase","γελώντας|γελώ|laughing","ποδιά|η ποδιά|apron","προσπαθώ|προσπαθώ|to try","φτιάξω|φτιάχνω|to make","συνταγές|η συνταγή|recipe","λείπει|λείπω|to be missing, absent"]},
+{id:"tourismos",level:"B2",topic:"News",title:"Ο τουρισμός φέτος",
+text:"Σύμφωνα με τα στοιχεία του υπουργείου, οι αφίξεις τουριστών σημείωσαν φέτος νέο ρεκόρ. Τα νησιά του Αιγαίου δέχονται εκατομμύρια επισκέπτες, ενώ αυξημένη κίνηση παρατηρείται και σε προορισμούς της ηπειρωτικής χώρας. Ωστόσο, οι κάτοικοι εκφράζουν ανησυχίες για τον υπερτουρισμό: οι τιμές των ενοικίων εκτοξεύονται, οι υποδομές πιέζονται και το νερό σπανίζει σε αρκετά νησιά. Οι ειδικοί προτείνουν μέτρα για βιώσιμη ανάπτυξη, όπως όρια στα κρουαζιερόπλοια και κίνητρα για επιμήκυνση της σεζόν. Η πρόκληση είναι να διατηρηθεί η ισορροπία ανάμεσα στα έσοδα και στην ποιότητα ζωής των ντόπιων.",
+gloss:["σύμφωνα|σύμφωνα με|according to","στοιχεία|το στοιχείο|data, figures","υπουργείου|το υπουργείο|ministry","αφίξεις|η άφιξη|arrival","τουριστών|ο τουρίστας|tourist","σημείωσαν|σημειώνω|to record, register","φέτος|φέτος|this year","ρεκόρ|το ρεκόρ|record","νησιά|το νησί|island","αιγαίου|το Αιγαίο|the Aegean","δέχονται|δέχομαι|to receive","εκατομμύρια|το εκατομμύριο|million","επισκέπτες|ο επισκέπτης|visitor","αυξημένη|αυξημένος|increased","κίνηση|η κίνηση|traffic, activity","παρατηρείται|παρατηρούμαι|to be observed","προορισμούς|ο προορισμός|destination","ηπειρωτικής|ηπειρωτικός|mainland (adj.)","χώρας|η χώρα|country","ωστόσο|ωστόσο|however, nevertheless","κάτοικοι|ο κάτοικος|resident, inhabitant","εκφράζουν|εκφράζω|to express","ανησυχίες|η ανησυχία|concern, worry","υπερτουρισμό|ο υπερτουρισμός|overtourism","τιμές|η τιμή|price","ενοικίων|το ενοίκιο|rent","εκτοξεύονται|εκτοξεύομαι|to skyrocket|Literally: to be launched","υποδομές|η υποδομή|infrastructure","πιέζονται|πιέζομαι|to be strained, under pressure","σπανίζει|σπανίζω|to be scarce","αρκετά|αρκετός|several, quite a few","ειδικοί|ο ειδικός|expert, specialist","προτείνουν|προτείνω|to propose","μέτρα|το μέτρο|measure","βιώσιμη|βιώσιμος|sustainable","ανάπτυξη|η ανάπτυξη|development, growth","όρια|το όριο|limit","κρουαζιερόπλοια|το κρουαζιερόπλοιο|cruise ship","κίνητρα|το κίνητρο|incentive","επιμήκυνση|η επιμήκυνση|extension, lengthening","σεζόν|η σεζόν|season (tourism)","πρόκληση|η πρόκληση|challenge","διατηρηθεί|διατηρούμαι|to be maintained, preserved","ισορροπία|η ισορροπία|balance","ανάμεσα|ανάμεσα σε|between, among","έσοδα|τα έσοδα|revenue, income","ποιότητα|η ποιότητα|quality","ζωής|η ζωή|life","ντόπιων|ο ντόπιος|local (person)"]},
+{id:"kaiki",level:"B2",topic:"The sea",title:"Ταξίδι με το καΐκι",
+text:"Ξεκινήσαμε από το λιμάνι λίγο πριν την ανατολή. Ο καπετάνιος έλυσε τους κάβους και το καΐκι γλίστρησε αθόρυβα στα ήρεμα νερά. Καθώς βγήκαμε από τον κόλπο, το μελτέμι δυνάμωσε και τα κύματα άρχισαν να σκάνε στην πλώρη. Δελφίνια εμφανίστηκαν στα ανοιχτά και συνόδευσαν το σκάφος για ώρα. Αράξαμε σε μια απάνεμη αμμουδιά, όπου βουτήξαμε στα καταγάλανα νερά. Ο καπετάνιος έψησε φρέσκο ψάρι στη σχάρα και μας διηγήθηκε ιστορίες από τα νιάτα του, τότε που τα καΐκια κουβαλούσαν εμπορεύματα από νησί σε νησί.",
+gloss:["ξεκινήσαμε|ξεκινώ|to set off, depart","λιμάνι|το λιμάνι|port, harbor","ανατολή|η ανατολή|sunrise; east","καπετάνιος|ο καπετάνιος|captain","έλυσε|λύνω|to untie, loosen","κάβους|ο κάβος|mooring line","καΐκι|το καΐκι|traditional wooden boat","καΐκια|το καΐκι|traditional wooden boat","γλίστρησε|γλιστρώ|to glide, slip","αθόρυβα|αθόρυβα|silently, noiselessly","ήρεμα|ήρεμος|calm","κόλπο|ο κόλπος|gulf, bay","μελτέμι|το μελτέμι|meltemi|The dry north wind of the Aegean summer","δυνάμωσε|δυναμώνω|to strengthen, pick up","κύματα|το κύμα|wave","σκάνε|σκάω|to break, burst","πλώρη|η πλώρη|bow (of a boat)|Opposite: η πρύμνη, the stern","δελφίνια|το δελφίνι|dolphin","εμφανίστηκαν|εμφανίζομαι|to appear","ανοιχτά|τα ανοιχτά|the open sea","συνόδευσαν|συνοδεύω|to accompany","σκάφος|το σκάφος|vessel, craft","αράξαμε|αράζω|to anchor, moor|In slang also: to chill, hang out","απάνεμη|απάνεμος|sheltered from the wind","αμμουδιά|η αμμουδιά|sandy beach","βουτήξαμε|βουτώ|to dive, plunge","καταγάλανα|καταγάλανος|deep blue|The prefix κατα- intensifies γαλανός","έψησε|ψήνω|to grill, roast","ψάρι|το ψάρι|fish","σχάρα|η σχάρα|grill","διηγήθηκε|διηγούμαι|to narrate, recount","ιστορίες|η ιστορία|story","νιάτα|τα νιάτα|youth, young years","κουβαλούσαν|κουβαλώ|to carry, haul","εμπορεύματα|το εμπόρευμα|goods, merchandise"]},
+{id:"elia",level:"C1",topic:"Economy",title:"Η ελιά και η οικονομία",
+text:"Η ελαιοκαλλιέργεια αποτελεί διαχρονικό πυλώνα της ελληνικής υπαίθρου, τόσο σε οικονομικό όσο και σε πολιτισμικό επίπεδο. Παρά τη διεθνή ζήτηση για ελαιόλαδο υψηλής ποιότητας, ο κλάδος αντιμετωπίζει διαρθρωτικές αδυναμίες: κατακερματισμένος κλήρος, γηράσκων αγροτικός πληθυσμός και ελλιπής τυποποίηση. Σημαντικό μερίδιο της παραγωγής εξάγεται χύμα σε γειτονικές χώρες, οι οποίες το εμφιαλώνουν και καρπώνονται την υπεραξία. Οι κλιματικές μεταβολές επιδεινώνουν την κατάσταση, καθώς οι παρατεταμένες ξηρασίες πλήττουν τις αποδόσεις. Απαιτείται συντονισμένη στρατηγική με επενδύσεις στη μεταποίηση, ώστε το προϊόν να φτάνει στα ράφια με ελληνική ετικέτα.",
+gloss:["ελαιοκαλλιέργεια|η ελαιοκαλλιέργεια|olive cultivation","αποτελεί|αποτελώ|to constitute, form","διαχρονικό|διαχρονικός|timeless, enduring","πυλώνα|ο πυλώνας|pillar","υπαίθρου|η ύπαιθρος|countryside","οικονομικό|οικονομικός|economic","πολιτισμικό|πολιτισμικός|cultural","επίπεδο|το επίπεδο|level","διεθνή|διεθνής|international","ζήτηση|η ζήτηση|demand","ελαιόλαδο|το ελαιόλαδο|olive oil","υψηλής|υψηλός|high","ποιότητας|η ποιότητα|quality","κλάδος|ο κλάδος|sector, industry","αντιμετωπίζει|αντιμετωπίζω|to face, confront","διαρθρωτικές|διαρθρωτικός|structural","αδυναμίες|η αδυναμία|weakness","κατακερματισμένος|κατακερματισμένος|fragmented","κλήρος|ο κλήρος|landholding, plot|Also: lot, inheritance","γηράσκων|γηράσκων|aging|Formal participle of γηράσκω","αγροτικός|αγροτικός|agricultural, rural","πληθυσμός|ο πληθυσμός|population","ελλιπής|ελλιπής|insufficient, deficient","τυποποίηση|η τυποποίηση|standardization, branding","μερίδιο|το μερίδιο|share, portion","παραγωγής|η παραγωγή|production","εξάγεται|εξάγομαι|to be exported","χύμα|χύμα|in bulk, unpackaged","γειτονικές|γειτονικός|neighboring","εμφιαλώνουν|εμφιαλώνω|to bottle","καρπώνονται|καρπώνομαι|to reap the benefit of","υπεραξία|η υπεραξία|added value","κλιματικές|κλιματικός|climatic","μεταβολές|η μεταβολή|change, shift","επιδεινώνουν|επιδεινώνω|to worsen, aggravate","κατάσταση|η κατάσταση|situation","παρατεταμένες|παρατεταμένος|prolonged","ξηρασίες|η ξηρασία|drought","πλήττουν|πλήττω|to strike, hit hard","αποδόσεις|η απόδοση|yield, output","απαιτείται|απαιτούμαι|to be required","συντονισμένη|συντονισμένος|coordinated","στρατηγική|η στρατηγική|strategy","επενδύσεις|η επένδυση|investment","μεταποίηση|η μεταποίηση|processing, manufacturing","προϊόν|το προϊόν|product","ράφια|το ράφι|shelf","ετικέτα|η ετικέτα|label"]},
+{id:"ikaros",level:"C1",topic:"Mythology",title:"Ο μύθος του Ικάρου",
+text:"Ο μύθος του Ικάρου εξακολουθεί να συγκινεί, ακριβώς επειδή συμπυκνώνει την αιώνια σύγκρουση ανάμεσα στη φιλοδοξία και στο μέτρο. Ο Δαίδαλος, αρχετυπικός τεχνίτης, κατασκευάζει φτερά από κερί και πούπουλα για να δραπετεύσει από τον λαβύρινθο· συμβουλεύει τον γιο του να μην πετάξει ούτε πολύ χαμηλά, ώστε η υγρασία να μη βαρύνει τα φτερά, ούτε πολύ ψηλά, ώστε ο ήλιος να μη λιώσει το κερί. Ο νεαρός, μεθυσμένος από την αίσθηση της πτήσης, αψηφά την πατρική νουθεσία και συντρίβεται στο πέλαγος. Οι αρχαίοι ονόμαζαν το πάθημά του ύβρη — υπέρβαση των ορίων που επιφέρει την πτώση.",
+gloss:["μύθος|ο μύθος|myth","ικάρου|ο Ίκαρος|Icarus","εξακολουθεί|εξακολουθώ|to continue, persist","συγκινεί|συγκινώ|to move, touch (emotionally)","ακριβώς|ακριβώς|precisely, exactly","συμπυκνώνει|συμπυκνώνω|to condense, distill","αιώνια|αιώνιος|eternal","σύγκρουση|η σύγκρουση|conflict, clash","φιλοδοξία|η φιλοδοξία|ambition","μέτρο|το μέτρο|moderation, measure|A central concept of Greek ethics","δαίδαλος|ο Δαίδαλος|Daedalus","αρχετυπικός|αρχετυπικός|archetypal","τεχνίτης|ο τεχνίτης|craftsman, artisan","κατασκευάζει|κατασκευάζω|to construct, build","φτερά|το φτερό|wing; feather","κερί|το κερί|wax; candle","πούπουλα|το πούπουλο|down feather","δραπετεύσει|δραπετεύω|to escape","λαβύρινθο|ο λαβύρινθος|labyrinth","συμβουλεύει|συμβουλεύω|to advise","γιο|ο γιος|son","πετάξει|πετώ|to fly","χαμηλά|χαμηλά|low","υγρασία|η υγρασία|moisture, humidity","βαρύνει|βαραίνω|to weigh down","ψηλά|ψηλά|high","ήλιος|ο ήλιος|sun","λιώσει|λιώνω|to melt","νεαρός|ο νεαρός|the young man","μεθυσμένος|μεθυσμένος|drunk, intoxicated","αίσθηση|η αίσθηση|sensation, feeling","πτήσης|η πτήση|flight","αψηφά|αψηφώ|to defy, disregard","πατρική|πατρικός|paternal","νουθεσία|η νουθεσία|admonition, counsel|A formal, learned word","συντρίβεται|συντρίβομαι|to crash, be shattered","πέλαγος|το πέλαγος|open sea","αρχαίοι|ο αρχαίος|the ancients","ονόμαζαν|ονομάζω|to call, name","πάθημά|το πάθημα|misfortune (that teaches)|Cf. το πάθημα να γίνει μάθημα","ύβρη|η ύβρις|hubris|Overstepping limits, inviting nemesis","υπέρβαση|η υπέρβαση|overstepping, transgression","ορίων|το όριο|limit, boundary","επιφέρει|επιφέρω|to bring about","πτώση|η πτώση|fall"]}
+];
+
+// ── State ──
+let deck = load(LS.deck, []);
+let customLib = load(LS.lib, []);           // cached AI-generated passages
+let settings = load(LS.settings, { apiKey:"", model:"claude-sonnet-4-6", level:"B2" });
+let tab = "read", activeP = null, lookupState = null;
+let queue = [], revealed = false, sessionDone = 0;
+let genBusy = false, genMsg = "";
+
+function load(k, fb){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; }catch(e){ return fb; } }
+function save(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){ console.error("save failed", e); } }
+
+// ── Gloss maps ──
+function glossMap(p){ const m={}; for(const line of p.gloss){ const [s,l,t,n] = line.split("|"); m[s.toLowerCase()] = {lemma:l, translation:t, note:n||""}; } return m; }
+function allPassages(){ return [...customLib, ...BUNDLED]; }
+function cleanWord(w){ return w.replace(/[.,;·!?»«"'()\[\]:—–…\d]/g,"").trim(); }
+
+function lookupWord(word, passage){
+  const key = cleanWord(word).toLowerCase();
+  if(!key) return null;
+  if(passage){ const m = glossMap(passage); if(m[key]) return {...m[key], surface:key}; }
+  for(const p of allPassages()){ const m = glossMap(p); if(m[key]) return {...m[key], surface:key}; }
+  if(CORE[key]) return {lemma:key, translation:CORE[key], note:"Common function word", surface:key, core:true};
+  return {surface:key, missing:true};
+}
+
+// ── Spaced repetition ──
+function gradeCard(c, g){
+  const now = Date.now();
+  let {interval=0, ease=2.5, reps=0} = c;
+  if(g==="again") return {...c, interval:0, reps:0, ease:Math.max(1.3,ease-0.2), due:now+600000, lapses:(c.lapses||0)+1};
+  if(reps===0) interval = g==="easy"?3:1;
+  else if(reps===1) interval = g==="easy"?7:3;
+  else { const m = g==="hard"?1.2 : g==="easy"?ease*1.4 : ease; interval = Math.max(interval+1, Math.round(interval*m)); }
+  if(g==="hard") ease = Math.max(1.3, ease-0.15);
+  if(g==="easy") ease += 0.1;
+  return {...c, interval, ease, reps:reps+1, due:now+interval*DAY};
+}
+
+// ── TTS (on-device) ──
+function speak(text, rate){
+  try{
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    const v = speechSynthesis.getVoices().find(v=>v.lang && v.lang.toLowerCase().startsWith("el"));
+    if(v) u.voice = v;
+    u.lang = "el-GR"; u.rate = rate || 0.92;
+    speechSynthesis.speak(u);
+  }catch(e){ console.error(e); }
+}
+if("speechSynthesis" in window) speechSynthesis.getVoices(); // warm up voice list
+
+// ── Anthropic API (online mode, bring-your-own-key) ──
+async function callClaude(prompt, maxTokens){
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method:"POST",
+    headers:{
+      "content-type":"application/json",
+      "x-api-key": settings.apiKey,
+      "anthropic-version":"2023-06-01",
+      "anthropic-dangerous-direct-browser-access":"true"
+    },
+    body: JSON.stringify({ model: settings.model, max_tokens: maxTokens||2000,
+      messages:[{role:"user", content:prompt}] })
+  });
+  if(!res.ok){ const err = await res.json().catch(()=>({})); throw new Error(err?.error?.message || ("HTTP "+res.status)); }
+  const data = await res.json();
+  return data.content.filter(b=>b.type==="text").map(b=>b.text).join("\n").replace(/```json|```/g,"").trim();
+}
+
+async function generateAndCache(topic){
+  if(!settings.apiKey){ genMsg = "Add your Anthropic API key in Settings first."; render(); return; }
+  if(!navigator.onLine){ genMsg = "You're offline — generation needs internet."; render(); return; }
+  genBusy = true; genMsg = "Generating and glossing a new passage…"; render();
+  const due = deck.filter(c=>c.due<=Date.now()).slice(0,8).map(c=>c.lemma);
+  const prompt = `You are a Greek tutor creating material for a heritage learner (level ${settings.level}) who understands everyday speech but wants to grow vocabulary.
+
+Write a natural, idiomatic Modern Greek passage of 120–160 words on: "${topic}".${due.length ? ` Where natural, include some of these study words: ${due.join(", ")}.` : ""}
+
+Then gloss EVERY content word in the passage (skip only articles, common particles and prepositions). For each, give: the exact surface form as it appears (lowercase), the dictionary lemma with article, a concise English translation as used in context, and optionally a short usage note.
+
+Respond ONLY with valid JSON, no markdown:
+{"title":"short Greek title","text":"the passage","gloss":[["surface","lemma","translation","note or empty string"],...]}`;
+  try{
+    const raw = await callClaude(prompt, 3500);
+    const p = JSON.parse(raw);
+    const entry = {
+      id: "gen-"+Date.now(), level: settings.level, topic, title: p.title, text: p.text,
+      gloss: p.gloss.map(g => g.join("|")), cached: true
+    };
+    customLib = [entry, ...customLib];
+    save(LS.lib, customLib);
+    genMsg = ""; activeP = entry; lookupState = null;
+  }catch(e){ genMsg = "Generation failed: " + e.message; }
+  genBusy = false; render();
+}
+
+async function liveLookup(word, sentence, passage){
+  lookupState = {surface: cleanWord(word).toLowerCase(), loading:true}; render();
+  const prompt = `A Greek learner tapped "${cleanWord(word)}" in: "${sentence}". Respond ONLY with JSON, no markdown: {"lemma":"dictionary form with article","translation":"concise English meaning in this context","note":"one short usage/root note"}`;
+  try{
+    const raw = await callClaude(prompt, 500);
+    const d = JSON.parse(raw);
+    lookupState = {surface: cleanWord(word).toLowerCase(), lemma:d.lemma, translation:d.translation, note:d.note||"", sentence};
+    // cache into the passage gloss so it's offline next time
+    if(passage && passage.cached){
+      passage.gloss.push([lookupState.surface, d.lemma, d.translation, d.note||""].join("|"));
+      customLib = customLib.map(p => p.id===passage.id ? passage : p);
+      save(LS.lib, customLib);
+    }
+  }catch(e){ lookupState = {surface: cleanWord(word).toLowerCase(), missing:true, error:e.message}; }
+  render();
+}
+
+// ── Deck ops ──
+function savedForms(){ return new Set(deck.flatMap(c => (c.forms||[c.lemma]).map(f=>f.toLowerCase()))); }
+function dueCards(){ return deck.filter(c=>c.due<=Date.now()); }
+
+function saveLookup(){
+  const l = lookupState;
+  if(!l || l.missing || l.core) return;
+  const ex = deck.find(c=>c.lemma.toLowerCase()===l.lemma.toLowerCase());
+  if(ex){ ex.forms = [...new Set([...(ex.forms||[]), l.surface])]; }
+  else deck.push({ id:Date.now(), lemma:l.lemma, translation:l.translation, note:l.note||"",
+    context:l.sentence||"", forms:[l.surface, l.lemma], due:Date.now(), interval:0, ease:2.5, reps:0, added:Date.now() });
+  save(LS.deck, deck);
+  lookupState.saved = true; render();
+}
+
+function startReview(){
+  queue = dueCards().sort((a,b)=>a.due-b.due).slice(0,30);
+  revealed = false; sessionDone = 0;
+}
+function answer(g){
+  const c = queue[0]; const u = gradeCard(c, g);
+  deck = deck.map(x=>x.id===c.id?u:x); save(LS.deck, deck);
+  queue = queue.slice(1); if(g==="again") queue.push(u);
+  revealed = false; sessionDone++; render();
+}
+function delCard(id){ deck = deck.filter(c=>c.id!==id); save(LS.deck, deck); render(); }
+
+// ── Rendering ──
+const $ = id => document.getElementById(id);
+function esc(s){ return String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+function passageHTML(p){
+  const known = savedForms();
+  const sentences = p.text.split(/(?<=[.;!?·…])\s+/);
+  return sentences.map((sentence, si) =>
+    sentence.split(/(\s+)/).map((tok, ti) => {
+      if(/^\s+$/.test(tok) || !cleanWord(tok)) return esc(tok);
+      const w = cleanWord(tok).toLowerCase();
+      const k = known.has(w) ? " known" : "";
+      return `<span class="word${k}" data-si="${si}" data-w="${esc(tok)}">${esc(tok)}</span>`;
+    }).join("") + " "
+  ).join("");
+}
+
+function lookupHTML(){
+  const l = lookupState;
+  if(!l) return "";
+  if(l.loading) return `<div class="card lookup"><div class="muted">Looking up <b>${esc(l.surface)}</b> online…</div></div>`;
+  if(l.missing){
+    const canLive = settings.apiKey && navigator.onLine;
+    return `<div class="card lookup"><div style="font-size:14.5px;color:#6B7683;">
+      <b>${esc(l.surface)}</b> isn't in the offline glossary.${l.error?` (${esc(l.error)})`:""}
+      ${canLive ? `<div style="margin-top:10px;"><button class="btn" style="width:100%;" onclick="doLive()">Look up online with Claude</button></div>` : `<div style="margin-top:6px;">Connect to the internet (with an API key in Settings) to look it up live.</div>`}
+    </div></div>`;
+  }
+  return `<div class="card lookup">
+    <div class="row"><span class="display" style="font-size:24px;color:#1E3A5C;">${esc(l.lemma)}</span>
+      <button style="background:none;border:none;font-size:18px;cursor:pointer;" onclick="speak('${esc(l.lemma).replace(/'/g,"\\'")}',0.85)">🔊</button></div>
+    <div style="font-size:17px;font-weight:600;margin-top:4px;">${esc(l.translation)}</div>
+    ${l.note ? `<div style="font-size:14.5px;color:#4B5563;margin-top:8px;">${esc(l.note)}</div>` : ""}
+    ${l.core ? "" : `<button class="btn" style="margin-top:14px;width:100%;${l.saved?'background:#3E7C4F;':''}" onclick="saveLookup()" ${l.saved?'disabled':''}>${l.saved ? "✓ Saved to your deck" : "+ Save to my deck"}</button>`}
+  </div>`;
+}
+
+function render(){
+  $("statSaved").textContent = deck.length;
+  $("statDue").textContent = dueCards().length;
+  $("netStatus").textContent = navigator.onLine ? (settings.apiKey ? "ONLINE · AI READY" : "ONLINE · OFFLINE LIBRARY") : "OFFLINE MODE";
+
+  const due = dueCards().length;
+  $("tabs").innerHTML = [["read","Read"],["review",`Review${due?` (${due})`:""}`],["words","My words"],["settings","⚙ Settings"]]
+    .map(([id,l]) => `<button class="chip${tab===id?" on":""}" onclick="setTab('${id}')">${l}</button>`).join("");
+
+  let html = "";
+
+  if(tab==="read" && !activeP){
+    html += `<div style="padding-top:10px;">`;
+    html += `<div class="card" style="padding:16px;">
+      <div style="font-weight:700;color:#1E3A5C;">Generate a new passage <span class="muted">(online, cached for offline)</span></div>
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <input type="text" id="topicIn" placeholder="Topic — e.g. Greek news, Porto Cheli, the Argolid…" style="flex:1;">
+        <button class="btn" onclick="genGo()" ${genBusy?"disabled":""}>${genBusy?"…":"Go"}</button>
+      </div>
+      ${genMsg?`<div class="muted" style="margin-top:8px;color:#8A6D1F;">${esc(genMsg)}</div>`:""}
+    </div>`;
+    for(const p of allPassages()){
+      html += `<div class="card row" style="padding:16px;cursor:pointer;" onclick="openP('${p.id}')">
+        <div><div class="display" style="font-size:19px;color:#1E3A5C;">${esc(p.title)}</div>
+        <div class="muted" style="margin-top:2px;">${p.level} · ${esc(p.topic)} · ${p.gloss.length} glossed
+        <span class="badge ${p.cached?"cached":"bundled"}">${p.cached?"AI · cached":"bundled"}</span></div></div>
+        <div style="color:#C89B3C;font-size:20px;">→</div></div>`;
+    }
+    html += `</div>`;
+  }
+
+  if(tab==="read" && activeP){
+    html += `<div style="padding-top:10px;">
+      <button class="chip" onclick="closeP()">← Library</button>
+      <div class="card">
+        <div class="row"><h2 class="display" style="font-size:22px;margin:0;color:#1E3A5C;">${esc(activeP.title)}</h2>
+        <button class="btn sec" style="padding:8px 14px;font-size:13px;flex-shrink:0;" onclick="speakPassage()">▶ Listen</button></div>
+        <p class="passage" id="passageBody">${passageHTML(activeP)}</p>
+        <div class="muted">Tap any word. Gold underline = already in your deck.</div>
+      </div>
+      ${lookupHTML()}
+    </div>`;
+  }
+
+  if(tab==="review"){
+    if(queue.length===0){
+      html += `<div class="card" style="text-align:center;padding:36px;">
+        <div class="display" style="font-size:26px;color:#1E3A5C;">${sessionDone>0?"Μπράβο σου!":"Nothing due right now"}</div>
+        <div style="margin-top:8px;color:#4B5563;font-size:15px;">${sessionDone>0?`You reviewed ${sessionDone} card${sessionDone===1?"":"s"}.`:(deck.length===0?"Read a passage and tap unknown words to build your deck.":"All caught up — read something new to keep growing.")}</div>
+        <button class="btn" style="margin-top:18px;" onclick="setTab('read')">Go read</button></div>`;
+    } else {
+      const c = queue[0];
+      html += `<div class="muted" style="padding-top:14px;">${queue.length} left in this session</div>
+      <div class="card" style="min-height:240px;display:flex;flex-direction:column;">
+        <div style="flex:1;">
+          <div class="row"><div class="display" style="font-size:32px;color:#1E3A5C;">${esc(c.lemma)}</div>
+          <button style="background:none;border:none;font-size:20px;cursor:pointer;" onclick="speak('${esc(c.lemma).replace(/'/g,"\\'")}',0.85)">🔊</button></div>
+          ${(!revealed && c.context)?`<div style="font-size:14.5px;color:#6B7683;margin-top:12px;font-style:italic;">Seen in: «${esc(c.context)}»</div>`:""}
+          ${revealed?`<div style="margin-top:12px;border-top:1px solid #E5E1D8;padding-top:12px;">
+            <div style="font-size:19px;font-weight:700;">${esc(c.translation)}</div>
+            ${c.note?`<div style="font-size:14.5px;color:#4B5563;margin-top:8px;">${esc(c.note)}</div>`:""}</div>`:""}
+        </div>
+        ${!revealed
+          ? `<button class="btn" style="margin-top:16px;" onclick="revealed=true;render()">Show answer</button>`
+          : `<div class="grades">
+              <button style="background:#B4432F;" onclick="answer('again')">Again</button>
+              <button style="background:#A87614;" onclick="answer('hard')">Hard</button>
+              <button style="background:#1E3A5C;" onclick="answer('good')">Good</button>
+              <button style="background:#3E7C4F;" onclick="answer('easy')">Easy</button></div>`}
+      </div>`;
+    }
+  }
+
+  if(tab==="words"){
+    if(deck.length===0) html += `<div class="card" style="text-align:center;color:#6B7683;">No words yet — tap words while reading to collect them.</div>`;
+    else for(const c of [...deck].sort((a,b)=>b.added-a.added)){
+      html += `<div class="card row" style="padding:14px;">
+        <div style="min-width:0;"><span class="display" style="font-size:18px;color:#1E3A5C;">${esc(c.lemma)}</span>
+        <span style="font-size:14px;color:#4B5563;margin-left:10px;">${esc(c.translation)}</span>
+        <div style="font-size:12px;color:#9AA3AE;margin-top:2px;">${c.due<=Date.now()?"due now":"next: "+new Date(c.due).toLocaleDateString()} · seen ${c.reps}×</div></div>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button style="background:none;border:none;font-size:17px;cursor:pointer;" onclick="speak('${esc(c.lemma).replace(/'/g,"\\'")}',0.85)">🔊</button>
+          <button style="background:none;border:none;font-size:15px;cursor:pointer;color:#B4432F;" onclick="delCard(${c.id})">✕</button></div></div>`;
+    }
+  }
+
+  if(tab==="settings"){
+    html += `<div class="card">
+      <div style="font-weight:700;color:#1E3A5C;">Online mode (optional)</div>
+      <div class="muted" style="margin:6px 0 12px;">With an Anthropic API key, you can generate new fully-glossed passages while online. They're cached on this device and readable offline. Get a key at console.anthropic.com. It's stored only on this phone.</div>
+      <input type="password" id="keyIn" placeholder="sk-ant-…" value="${esc(settings.apiKey)}">
+      <div style="margin-top:10px;">
+        <label class="muted">My level for generated texts</label>
+        <select id="lvlIn">${["B1","B2","C1"].map(l=>`<option ${settings.level===l?"selected":""}>${l}</option>`).join("")}</select>
+      </div>
+      <button class="btn" style="margin-top:14px;width:100%;" onclick="saveSettings()">Save settings</button>
+      <div id="setMsg" class="muted" style="margin-top:8px;"></div>
+    </div>
+    <div class="card">
+      <div style="font-weight:700;color:#1E3A5C;">Backup</div>
+      <div class="muted" style="margin:6px 0 12px;">Your deck lives in this browser's storage. Export it occasionally as a safety net.</div>
+      <button class="btn sec" style="width:100%;" onclick="exportDeck()">Export deck as JSON</button>
+    </div>`;
+  }
+
+  $("main").innerHTML = html;
+
+  // wire word taps (event delegation)
+  const pb = $("passageBody");
+  if(pb){
+    const sentences = activeP.text.split(/(?<=[.;!?·…])\s+/);
+    pb.querySelectorAll(".word").forEach(el=>{
+      el.onclick = () => {
+        const w = el.getAttribute("data-w"), si = +el.getAttribute("data-si");
+        const sentence = sentences[si] || "";
+        const r = lookupWord(w, activeP);
+        if(r.missing && settings.apiKey && navigator.onLine){ liveLookup(w, sentence, activeP); return; }
+        lookupState = {...r, sentence, saved:false}; render();
+        // scroll lookup into view on phones
+        setTimeout(()=>{ const c = document.querySelector(".lookup"); if(c) c.scrollIntoView({behavior:"smooth", block:"nearest"}); }, 50);
+      };
+    });
+  }
+}
+
+// ── Actions exposed to inline handlers ──
+window.setTab = t => { tab = t; if(t==="review") startReview(); render(); };
+window.openP = id => { activeP = allPassages().find(p=>p.id===id); lookupState = null; render(); window.scrollTo(0,0); };
+window.closeP = () => { activeP = null; lookupState = null; render(); };
+window.speak = speak;
+window.speakPassage = () => speak(activeP.text);
+window.saveLookup = saveLookup;
+window.answer = answer;
+window.delCard = delCard;
+window.genGo = () => { const t = $("topicIn").value.trim() || "Greek current affairs"; generateAndCache(t); };
+window.doLive = () => { if(lookupState) liveLookup(lookupState.surface, lookupState.sentence || "", activeP); };
+window.saveSettings = () => {
+  settings.apiKey = $("keyIn").value.trim();
+  settings.level = $("lvlIn").value;
+  save(LS.settings, settings);
+  $("setMsg").textContent = "Saved ✓";
+};
+window.exportDeck = () => {
+  const blob = new Blob([JSON.stringify({deck, customLib}, null, 2)], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "lexis-backup.json"; a.click();
+};
+window.addEventListener("online", render);
+window.addEventListener("offline", render);
+
+// register service worker for offline shell
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js").catch(()=>{}); }
+
+render();
+</script>
+</body>
+</html>

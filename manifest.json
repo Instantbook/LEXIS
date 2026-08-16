@@ -1,0 +1,9 @@
+{
+  "name": "ΛΕΞΙΣ — Greek Vocabulary",
+  "short_name": "ΛΕΞΙΣ",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#F7F5F0",
+  "theme_color": "#1E3A5C",
+  "icons": [{ "src": "icon.png", "sizes": "512x512", "type": "image/png" }]
+}
