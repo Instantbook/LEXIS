@@ -139,15 +139,17 @@ function gradeCard(c, g){
 }
 
 // ── TTS (on-device) ──
-function speak(text, rate){
+let speaking = false;
+function speak(text, rate, onend){
   try{
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     const v = speechSynthesis.getVoices().find(v=>v.lang && v.lang.toLowerCase().startsWith("el"));
     if(v) u.voice = v;
     u.lang = "el-GR"; u.rate = rate || 0.92;
+    u.onend = u.onerror = () => { if(onend) onend(); };
     speechSynthesis.speak(u);
-  }catch(e){ console.error(e); }
+  }catch(e){ console.error(e); if(onend) onend(); }
 }
 if("speechSynthesis" in window) speechSynthesis.getVoices(); // warm up voice list
 
@@ -303,7 +305,9 @@ function render(){
         <div><div class="display" style="font-size:19px;color:#1E3A5C;">${esc(p.title)}</div>
         <div class="muted" style="margin-top:2px;">${p.level} · ${esc(p.topic)} · ${p.gloss.length} glossed
         <span class="badge ${p.cached?"cached":"bundled"}">${p.cached?"AI · cached":"bundled"}</span></div></div>
-        <div style="color:#C89B3C;font-size:20px;">→</div></div>`;
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+        ${p.cached?`<button style="background:none;border:none;font-size:16px;cursor:pointer;color:#B4432F;padding:6px;" onclick="event.stopPropagation();delPassage('${p.id}')">✕</button>`:""}
+        <span style="color:#C89B3C;font-size:20px;">→</span></div></div>`;
     }
     html += `</div>`;
   }
@@ -313,7 +317,7 @@ function render(){
       <button class="chip" onclick="closeP()">← Library</button>
       <div class="card">
         <div class="row"><h2 class="display" style="font-size:22px;margin:0;color:#1E3A5C;">${esc(activeP.title)}</h2>
-        <button class="btn sec" style="padding:8px 14px;font-size:13px;flex-shrink:0;" onclick="speakPassage()">▶ Listen</button></div>
+        <button class="btn sec" style="padding:8px 14px;font-size:13px;flex-shrink:0;" onclick="speakPassage()">${speaking ? "■ Stop" : "▶ Listen"}</button></div>
         <p class="passage" id="passageBody">${passageHTML(activeP)}</p>
         <div class="muted">Tap any word. Gold underline = already in your deck.</div>
       </div>
@@ -403,11 +407,22 @@ function render(){
 }
 
 // ── Actions exposed to inline handlers ──
-window.setTab = t => { tab = t; if(t==="review") startReview(); render(); };
+window.setTab = t => { if(speaking){ speechSynthesis.cancel(); speaking=false; } tab = t; if(t==="review") startReview(); render(); };
 window.openP = id => { activeP = allPassages().find(p=>p.id===id); lookupState = null; render(); window.scrollTo(0,0); };
-window.closeP = () => { activeP = null; lookupState = null; render(); };
+window.closeP = () => { if(speaking){ speechSynthesis.cancel(); speaking=false; } activeP = null; lookupState = null; render(); };
+window.delPassage = id => {
+  if(!confirm("Delete this cached passage? Words you saved from it stay in your deck.")) return;
+  customLib = customLib.filter(p=>p.id!==id);
+  save(LS.lib, customLib);
+  if(activeP && activeP.id===id) activeP = null;
+  render();
+};
 window.speak = speak;
-window.speakPassage = () => speak(activeP.text);
+window.speakPassage = () => {
+  if(speaking){ speechSynthesis.cancel(); speaking = false; render(); return; }
+  speaking = true; render();
+  speak(activeP.text, 0.92, () => { speaking = false; render(); });
+};
 window.saveLookup = saveLookup;
 window.answer = answer;
 window.delCard = delCard;
