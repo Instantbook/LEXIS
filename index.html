@@ -65,7 +65,10 @@
 
 <script>
 "use strict";
-const APP_VERSION = "v7";
+const APP_VERSION = "v9";
+const SPEEDS = { fast: 0.92, medium: 0.69, slow: 0.52 };
+function curRate(){ return SPEEDS[settings.speed] || SPEEDS.fast; }
+function wordRate(){ return curRate() * 0.9; }
 // ═══════════════════════════════════════════════════════════
 // ΛΕΞΙΣ — offline-first Greek vocabulary builder (PWA)
 // Bundled library works forever offline. With an Anthropic API
@@ -156,14 +159,14 @@ function speakText(text, rate, onend, keepQueue){
   }catch(e){ console.error(e); if(onend) onend(); }
 }
 
-function splitSentences(t){ return t.split(/(?<=[.;!?·…])\s+/).filter(s=>s.trim()); }
+function splitSentences(t){ return t.split(/(?:(?<=[.;!?·…])\s+|\n+)/).filter(s=>s && s.trim()); }
 
 function speakChain(){
   const tk = player.token;
   if(!player.playing) { render(); return; }
   if(player.idx >= player.sentences.length){ player.playing=false; player.idx=0; render(); return; }
   const myIdx = player.idx;
-  speakText(player.sentences[myIdx], 0.92, () => {
+  speakText(player.sentences[myIdx], curRate(), () => {
     if(player.token !== tk || !player.playing) return;   // cancelled or paused
     if(player.idx !== myIdx) return;                     // duplicate event — already advanced
     player.idx = myIdx + 1;
@@ -224,9 +227,12 @@ async function generateAndCache(topic){
   genBusy = true; genMsg = "Generating and glossing a new passage…"; render();
   const due = deck.filter(c=>c.due<=Date.now()).slice(0,8).map(c=>c.lemma);
   const spec = LEVEL_SPECS[settings.level] || LEVEL_SPECS.B2;
+  const isDlg = (settings.format || "narrative") === "dialogue";
   const prompt = `You are a Greek tutor creating reading material for ${spec}
 
-Write a Modern Greek passage on: "${topic}".${(due.length && !["A1","A2"].includes(settings.level)) ? ` Where natural, include some of these study words: ${due.join(", ")}.` : ""}
+Write a Modern Greek ${isDlg ? "dialogue" : "passage"} on: "${topic}".${isDlg ? `
+
+Format it as a natural spoken conversation between two people. Each utterance goes on its own line, starting with an em-dash (—). Use genuinely colloquial SPOKEN Greek — the fillers, interjections and particles real speakers use (λοιπόν, έλα, ρε συ, ας πούμε, καλέ, βρε) suited to the level — not written-register Greek. Include the small conversational moves: greetings, reacting, agreeing, teasing, changing subject.` : ""}${(due.length && !["A1","A2"].includes(settings.level)) ? ` Where natural, include some of these study words: ${due.join(", ")}.` : ""}
 
 Then gloss EVERY content word in the passage (skip only articles, common particles and prepositions). For each, give: the exact surface form as it appears (lowercase), the dictionary lemma with article, a concise English translation as used in context, and optionally a short usage note.
 
@@ -296,15 +302,20 @@ function esc(s){ return String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;"
 
 function passageHTML(p){
   const known = savedForms();
-  const sentences = p.text.split(/(?<=[.;!?·…])\s+/);
-  return sentences.map((sentence, si) =>
-    sentence.split(/(\s+)/).map((tok, ti) => {
-      if(/^\s+$/.test(tok) || !cleanWord(tok)) return esc(tok);
-      const w = cleanWord(tok).toLowerCase();
-      const k = known.has(w) ? " known" : "";
-      return `<span class="word${k}" data-si="${si}" data-w="${esc(tok)}">${esc(tok)}</span>`;
-    }).join("") + " "
-  ).join("");
+  let si = 0;
+  const lines = p.text.split(/\n+/).filter(l => l.trim());
+  return lines.map(line =>
+    splitSentences(line).map(sentence => {
+      const htmlSent = sentence.split(/(\s+)/).map(tok => {
+        if(/^\s+$/.test(tok) || !cleanWord(tok)) return esc(tok);
+        const w = cleanWord(tok).toLowerCase();
+        const k = known.has(w) ? " known" : "";
+        return `<span class="word${k}" data-si="${si}" data-w="${esc(tok)}">${esc(tok)}</span>`;
+      }).join("") + " ";
+      si++;
+      return htmlSent;
+    }).join("")
+  ).join("<br>");
 }
 
 function lookupHTML(){
@@ -357,6 +368,9 @@ function render(){
       <div style="font-weight:700;color:#1E3A5C;">Generate a new passage <span class="muted">(online, cached for offline)</span></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;" id="genLevels">
         ${["A1","A2","B1","B2","C1","C2"].map(l=>`<button class="chip${settings.level===l?" on":""}" onclick="setLevel('${l}')">${l}</button>`).join("")}
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px;">
+        ${["narrative","dialogue"].map(f=>`<button class="chip${(settings.format||"narrative")===f?" on":""}" onclick="setFormat('${f}')">${f==="narrative"?"Narrative":"Dialogue"}</button>`).join("")}
       </div>
       <div style="display:flex;gap:8px;margin-top:10px;">
         <input type="text" id="topicIn" placeholder="Topic — e.g. Greek news, Porto Cheli, the Argolid…" style="flex:1;">
@@ -439,6 +453,12 @@ function render(){
       <div class="muted" style="margin:6px 0 12px;">With an Anthropic API key, you can generate new fully-glossed passages while online. They're cached on this device and readable offline. Get a key at console.anthropic.com. It's stored only on this phone.</div>
       <input type="password" id="keyIn" placeholder="sk-ant-…" value="${esc(settings.apiKey)}">
       <div style="margin-top:10px;">
+        <label class="muted">Speech speed</label>
+        <div style="display:flex;gap:6px;margin-top:6px;">
+          ${[["fast","Fast"],["medium","Medium"],["slow","Slow"]].map(([k,l])=>`<button class="chip${(settings.speed||"fast")===k?" on":""}" onclick="setSpeed('${k}')">${l}</button>`).join("")}
+        </div>
+      </div>
+      <div style="margin-top:10px;">
         <label class="muted">My level for generated texts</label>
         <select id="lvlIn">${["A1","A2","B1","B2","C1","C2"].map(l=>`<option ${settings.level===l?"selected":""}>${l}</option>`).join("")}</select>
       </div>
@@ -457,7 +477,7 @@ function render(){
   // wire word taps (event delegation)
   const pb = $("passageBody");
   if(pb){
-    const sentences = activeP.text.split(/(?<=[.;!?·…])\s+/);
+    const sentences = splitSentences(activeP.text);
     pb.querySelectorAll(".word").forEach(el=>{
       el.onclick = () => {
         const w = el.getAttribute("data-w"), si = +el.getAttribute("data-si");
@@ -492,12 +512,19 @@ window.delPassage = id => {
   if(activeP && activeP.id===id) activeP = null;
   render();
 };
-window.speak = (t, r) => { if(player.playing) pausePlayback(); speakText(t, r); };
+window.speak = (t, r) => { if(player.playing) pausePlayback(); speakText(t, wordRate()); };
 window.speakPassage = () => window.togglePlay();
 window.saveLookup = saveLookup;
 window.answer = answer;
 window.delCard = delCard;
 window.genGo = () => { const t = $("topicIn").value.trim() || "Greek current affairs"; generateAndCache(t); };
+window.setSpeed = k => { settings.speed = k; save(LS.settings, settings); render(); };
+window.setFormat = f => {
+  const typed = $("topicIn") ? $("topicIn").value : "";
+  settings.format = f; save(LS.settings, settings);
+  render();
+  if($("topicIn")) $("topicIn").value = typed;
+};
 window.setLevel = l => {
   const typed = $("topicIn") ? $("topicIn").value : "";
   settings.level = l; save(LS.settings, settings);
