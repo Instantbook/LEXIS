@@ -67,7 +67,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = "v17";
+const APP_VERSION = "v18";
 const SPEEDS = { fast: 0.92, medium: 0.69, slow: 0.52 };
 function curRate(){ return SPEEDS[settings.speed] || SPEEDS.fast; }
 function wordRate(){ return curRate() * 0.9; }
@@ -163,7 +163,7 @@ function save(k, v){
 }
 
 // ── Gloss maps ──
-function glossMap(p){ const m={}; for(const line of p.gloss){ const [s,l,t,n] = line.split("|"); m[s.toLowerCase()] = {lemma:l, translation:t, note:n||""}; } return m; }
+function glossMap(p){ const m={}; for(const line of p.gloss){ const [s,l,t,n] = line.split("|"); m[(cleanWord(s)||s).toLowerCase()] = {lemma:l, translation:t, note:n||""}; } return m; }
 function allPassages(){ return [...customLib.filter(inActiveLang), ...bundledPassages()]; }
 function passageOrigin(p){
   if(p.origin) return p.origin;                          // new entries
@@ -548,6 +548,146 @@ const PT_LEVEL_SPECS = {
   C2: "a near-native learner. Use elegant, demanding Portuguese — literary or journalistic register, idioms, refined and nuanced constructions. 130–170 words total."
 };
 
+// ═══ SLAVIC LANGUAGE PACKS (v18) — original graded, glossed seed content ═══
+// No articles; verbs are glossed in the aspect used, with the pair noted (pf./impf.).
+const RU_CORE = {"и":"and","а":"and, but","но":"but","или":"or","что":"that; what","чтобы":"in order to","как":"how, as, like","когда":"when","если":"if","потому":"because (потому что)","же":"emphatic particle","ли":"whether (question particle)","не":"not","ни":"not a, neither","нет":"no; there is no","да":"yes","в":"in, into","во":"in, into","на":"on, onto","с":"with; from","со":"with","к":"to, toward","у":"at, by|у нас: we have","о":"about","об":"about","от":"from","до":"until, up to","по":"along, according to","за":"behind; for","под":"under","над":"above","из":"out of, from","без":"without","для":"for","при":"at, in the presence of","через":"through, across","между":"between","я":"I","ты":"you","он":"he, it","она":"she","оно":"it","мы":"we","вы":"you (pl./formal)","они":"they","меня":"me","тебя":"you","его":"his, him","её":"her","нас":"us","вас":"you (pl.)","их":"their, them","мне":"to me","тебе":"to you","ему":"to him","ей":"to her","нам":"to us","вам":"to you (pl.)","им":"to them","мой":"my","твой":"your","наш":"our","наша":"our (fem.)","наше":"our (neut.)","ваш":"your (pl.)","свой":"one's own","этот":"this","эта":"this (fem.)","это":"this, it","эти":"these","тот":"that","та":"that (fem.)","то":"that","те":"those","который":"which, who","весь":"all, whole","вся":"all (fem.)","всё":"everything","все":"everyone, all","каждый":"each, every","другой":"other","сам":"oneself","самый":"the most","такой":"such","кто":"who","где":"where","куда":"where to","почему":"why","здесь":"here","тут":"here","там":"there","сюда":"here (to)","туда":"there (to)","сейчас":"now","теперь":"now","тогда":"then","потом":"then, afterwards","уже":"already","ещё":"still, yet; more","всегда":"always","никогда":"never","очень":"very","много":"much, many","мало":"little, few","больше":"more","меньше":"less","тоже":"also","также":"also","только":"only","даже":"even","вот":"here (is), there","есть":"there is; to eat","был":"was","была":"was (fem.)","было":"was (neut.)","были":"were","будет":"will be","быть":"to be","может":"maybe; can","можно":"one may, it's possible","нужно":"necessary, need","надо":"necessary, must","две":"two (fem.)","два":"two"};
+const RU_BUNDLED = [
+{id:"ru-rynok",level:"A2",topic:"Daily life",title:"Субботний рынок",
+text:"Каждую субботу утром я иду на рынок с бабушкой. Мы любим приходить рано, когда фрукты ещё свежие. Продавцы раскладывают товар на деревянных столах: красные помидоры, сладкие яблоки и свежий хлеб. Бабушка всегда разговаривает со всеми и спрашивает про их семьи. Мы покупаем овощи на неделю и иногда букет цветов. Потом мы пьём чай на площади и смотрим на людей. Для меня это не просто покупки — это наше время вместе.",
+gloss:["каждую|каждый|each, every","субботу|суббота|Saturday","утром|утро|morning|утром: in the morning","иду|идти|to go (on foot)|impf.; pf. пойти","рынок|рынок|market","бабушкой|бабушка|grandmother","любим|любить|to love, to like|impf.","приходить|приходить|to come, arrive|impf.; pf. прийти","рано|рано|early","фрукты|фрукт|fruit","свежие|свежий|fresh","продавцы|продавец|seller, vendor","раскладывают|раскладывать|to lay out, arrange|impf.; pf. разложить","товар|товар|goods, wares","деревянных|деревянный|wooden","столах|стол|table","красные|красный|red","помидоры|помидор|tomato","сладкие|сладкий|sweet","яблоки|яблоко|apple","свежий|свежий|fresh","хлеб|хлеб|bread","бабушка|бабушка|grandmother","разговаривает|разговаривать|to talk, chat|impf.","всеми|все|everyone","спрашивает|спрашивать|to ask|impf.; pf. спросить","про|про|about","семьи|семья|family","покупаем|покупать|to buy|impf.; pf. купить","овощи|овощ|vegetable","неделю|неделя|week","иногда|иногда|sometimes","букет|букет|bouquet","цветов|цветок|flower","пьём|пить|to drink|impf.","чай|чай|tea","площади|площадь|square","смотрим|смотреть|to look, watch|impf.","людей|люди|people","просто|просто|simply, just","покупки|покупка|purchase; (pl.) shopping","время|время|time","вместе|вместе|together"]},
+{id:"ru-dozhd",level:"B1",topic:"Everyday story",title:"Дождливый вечер",
+text:"В тот вечер дождь застал нас прямо на улице. Зонта у нас не было, поэтому мы побежали в маленькое кафе на углу. Внутри было тепло и пахло горячим шоколадом. Мы сели у окна и заказали две дымящиеся чашки. За окном город становился серым, прохожие спешили, прикрываясь газетами. Постепенно мы перестали смотреть на часы. Мы говорили часами о том, что давно забыли рассказать друг другу. Когда дождь наконец закончился, никто из нас не хотел уходить. Иногда лучшие моменты приходят без предупреждения.",
+gloss:["вечер|вечер|evening","дождь|дождь|rain","застал|застать|to catch (unexpectedly)|pf.; impf. заставать","прямо|прямо|right, straight","улице|улица|street","зонта|зонт|umbrella","поэтому|поэтому|therefore, so","побежали|побежать|to run (off)|pf.","маленькое|маленький|small, little","кафе|кафе|café","углу|угол|corner","внутри|внутри|inside","тепло|тепло|warm; warmth","пахло|пахнуть|to smell (of)|impf.","горячим|горячий|hot","шоколадом|шоколад|chocolate","сели|сесть|to sit down|pf.; impf. садиться","окна|окно|window","заказали|заказать|to order|pf.; impf. заказывать","дымящиеся|дымящийся|steaming","чашки|чашка|cup","окном|окно|window","город|город|city","становился|становиться|to become|impf.; pf. стать","серым|серый|gray","прохожие|прохожий|passer-by","спешили|спешить|to hurry|impf.","прикрываясь|прикрываться|to shield oneself|impf.","газетами|газета|newspaper","постепенно|постепенно|gradually","перестали|перестать|to stop (doing)|pf.; impf. переставать","часы|часы|clock, watch","говорили|говорить|to talk, speak|impf.","часами|час|hour|часами: for hours","том|тот|that|о том, что: about the fact that","давно|давно|long ago, for a long time","забыли|забыть|to forget|pf.; impf. забывать","рассказать|рассказать|to tell, recount|pf.; impf. рассказывать","друг|друг друга|each other|друг другу: to each other","другу|друг друга|each other","никто|никто|no one","наконец|наконец|finally, at last","закончился|закончиться|to end|pf.; impf. заканчиваться","хотел|хотеть|to want|impf.","уходить|уходить|to leave|impf.; pf. уйти","лучшие|лучший|best","моменты|момент|moment","приходят|приходить|to come|impf.","предупреждения|предупреждение|warning|без предупреждения: unannounced"]},
+{id:"ru-gorod",level:"B2",topic:"Society",title:"Город, который меняется",
+text:"За последние десятилетия многие российские города пережили глубокие перемены. Старые районы, где раньше жили обычные семьи, постепенно заполняются туристическими квартирами и модными кофейнями. Это явление, известное как джентрификация, вызывает противоречивые чувства. С одной стороны, оно привлекает инвестиции и возвращает жизнь заброшенным кварталам; с другой — вытесняет коренных жителей, которым не по карману выросшая аренда. Городские власти стоят перед непростым выбором: развивать туризм, несомненный двигатель экономики, не жертвуя душой районов. Найти это равновесие — одна из главных городских задач нашего времени.",
+gloss:["последние|последний|last, recent","десятилетия|десятилетие|decade","многие|многий|many","российские|российский|Russian (of Russia)","города|город|city","пережили|пережить|to live through, experience|pf.; impf. переживать","глубокие|глубокий|deep, profound","перемены|перемена|change","старые|старый|old","районы|район|district, neighborhood","раньше|раньше|earlier, before","жили|жить|to live|impf.","обычные|обычный|ordinary","семьи|семья|family","постепенно|постепенно|gradually","заполняются|заполняться|to fill up|impf.; pf. заполниться","туристическими|туристический|tourist (adj.)","квартирами|квартира|apartment","модными|модный|fashionable, trendy","кофейнями|кофейня|coffee shop","явление|явление|phenomenon","известное|известный|known, well-known","джентрификация|джентрификация|gentrification","вызывает|вызывать|to provoke, cause|impf.; pf. вызвать","противоречивые|противоречивый|contradictory","чувства|чувство|feeling","одной|один|one","стороны|сторона|side|с одной стороны: on the one hand","привлекает|привлекать|to attract|impf.; pf. привлечь","инвестиции|инвестиция|investment","возвращает|возвращать|to return, bring back|impf.; pf. вернуть","жизнь|жизнь|life","заброшенным|заброшенный|abandoned, neglected","кварталам|квартал|block, quarter","другой|другой|other|с другой (стороны): on the other hand","вытесняет|вытеснять|to push out, displace|impf.; pf. вытеснить","коренных|коренной|native, long-established","жителей|житель|resident, inhabitant","которым|который|which, whom","карману|карман|pocket|не по карману: unaffordable","выросшая|выросший|grown, increased","аренда|аренда|rent","городские|городской|urban, city (adj.)","власти|власть|authority, power|(pl.) the authorities","стоят|стоять|to stand|impf.","перед|перед|before, in front of","непростым|непростой|not simple, tricky","выбором|выбор|choice","развивать|развивать|to develop|impf.; pf. развить","туризм|туризм|tourism","несомненный|несомненный|undoubted","двигатель|двигатель|engine, motor","экономики|экономика|economy","жертвуя|жертвовать|to sacrifice|impf.; pf. пожертвовать","душой|душа|soul","найти|найти|to find|pf.; impf. находить","равновесие|равновесие|balance, equilibrium","одна|один|one","главных|главный|main, chief","городских|городской|urban, city (adj.)","задач|задача|task, challenge","времени|время|time"]}
+];
+const RU_LEVEL_SPECS = {
+  A1: "an absolute beginner. Use ONLY the most common everyday words, very short simple sentences (5–8 words), present tense mostly, lots of repetition of key words. 60–90 words total.",
+  A2: "an elementary learner. Use simple sentences, high-frequency vocabulary, present and simple past tense. 80–110 words total.",
+  B1: "an intermediate learner. Use everyday conversational Russian with some new vocabulary, varied but straightforward sentence structure, both verbal aspects where natural. 110–140 words total.",
+  B2: "an upper-intermediate learner. Use natural, idiomatic Russian as a native writer would; roughly 10–20% of content words should stretch them; natural aspect use and some participles. 120–160 words total.",
+  C1: "an advanced learner. Use sophisticated, editorial-register Russian with rich vocabulary, participial and gerund constructions, and formal style. 130–170 words total.",
+  C2: "a near-native learner. Use elegant, demanding Russian — literary or journalistic register, idioms, refined and nuanced constructions. 130–170 words total."
+};
+// Light Russian suffix stemmer — candidate lemmas for inflected forms, tried against glossaries.
+function ruStem(word){
+  const w = word.toLowerCase().replace(/ё/g,"е");
+  const cands = new Set([word.toLowerCase(), w]);
+  const rules = [
+    // verbs → infinitive
+    [/уются$/,"оваться"],[/уется$/,"оваться"],[/ует$/,"овать"],[/уют$/,"овать"],[/овали$/,"овать"],[/овал[аио]?$/,"овать"],
+    [/ываются$/,"ываться"],[/ывается$/,"ываться"],[/ывают$/,"ывать"],[/ывает$/,"ывать"],[/ывали$/,"ывать"],[/ывал[аио]?$/,"ывать"],
+    [/ают$/,"ать"],[/аем$/,"ать"],[/аете$/,"ать"],[/аешь$/,"ать"],[/ает$/,"ать"],[/аю$/,"ать"],[/али$/,"ать"],[/ал[аио]?$/,"ать"],
+    [/яются$/,"яться"],[/яется$/,"яться"],[/яют$/,"ять"],[/яет$/,"ять"],[/яли$/,"ять"],[/ял[аио]?$/,"ять"],
+    [/ится$/,"иться"],[/ятся$/,"иться"],[/ился$/,"иться"],[/илась$/,"иться"],[/ились$/,"иться"],
+    [/ит$/,"ить"],[/ят$/,"ить"],[/им$/,"ить"],[/ишь$/,"ить"],[/или$/,"ить"],[/ил[аио]?$/,"ить"],
+    [/еет$/,"еть"],[/еют$/,"еть"],[/ели$/,"еть"],[/ел[аио]?$/,"еть"],
+    // nouns — case endings
+    [/иями$/,"ия"],[/иях$/,"ия"],[/ией$/,"ия"],[/ии$/,"ия"],[/ию$/,"ия"],
+    [/ами$/,"а"],[/ах$/,"а"],[/ой$/,"а"],[/у$/,"а"],[/е$/,"а"],[/ы$/,"а"],
+    [/ями$/,"я"],[/ях$/,"я"],[/ей$/,"я"],[/ю$/,"я"],[/и$/,"я"],
+    [/ов$/,""],[/ом$/,""],[/ам$/,""],[/ах$/,""],[/у$/,""],[/е$/,""],[/а$/,""],[/ы$/,""],[/и$/,""],
+    // adjectives → -ый/-ий
+    [/ого$/,"ый"],[/ому$/,"ый"],[/ыми$/,"ый"],[/ых$/,"ый"],[/ым$/,"ый"],[/ая$/,"ый"],[/ую$/,"ый"],[/ое$/,"ый"],[/ые$/,"ый"],[/ой$/,"ый"],
+    [/его$/,"ий"],[/ему$/,"ий"],[/ими$/,"ий"],[/их$/,"ий"],[/им$/,"ий"],[/яя$/,"ий"],[/ее$/,"ий"],[/ие$/,"ий"],
+  ];
+  for(const [re, end] of rules){ if(re.test(w)) cands.add(w.replace(re, end)); }
+  if(w.length>4){ cands.add(w.slice(0,-1)); cands.add(w.slice(0,-2)); }
+  return [...cands];
+}
+const PL_CORE = {"i":"and","a":"and, whereas","ale":"but","lub":"or","albo":"or","że":"that","żeby":"in order to","jak":"how, as, like","kiedy":"when","gdy":"when","jeśli":"if","bo":"because","ponieważ":"because","więc":"so, therefore","czy":"whether (question particle)","nie":"not, no","tak":"yes; so","w":"in","we":"in","na":"on, at","z":"with; from","ze":"with; from","do":"to, into","od":"from","po":"after; along","za":"behind; for","pod":"under","nad":"above, over","przy":"at, by","bez":"without","dla":"for","o":"about","u":"at (someone's)","przez":"through, by","między":"between","ja":"I","ty":"you","on":"he","ona":"she","ono":"it","my":"we","wy":"you (pl.)","oni":"they (masc.)","one":"they","mnie":"me","cię":"you","go":"him, it","ją":"her","nas":"us","was":"you (pl.)","ich":"their, them","mi":"to me","ci":"to you; these","mu":"to him","jej":"her, to her","nam":"to us","wam":"to you (pl.)","im":"to them","mój":"my","twój":"your","nasz":"our","wasz":"your (pl.)","swój":"one's own","ten":"this","ta":"this (fem.)","to":"this, it","tamten":"that","który":"which, who","każdy":"each, every","inny":"other","sam":"oneself, alone","taki":"such","kto":"who","co":"what","gdzie":"where","dokąd":"where to","dlaczego":"why","tu":"here","tutaj":"here","tam":"there","teraz":"now","wtedy":"then","potem":"then, afterwards","już":"already","jeszcze":"still, yet; more","zawsze":"always","nigdy":"never","bardzo":"very","dużo":"much, many","mało":"little, few","więcej":"more","mniej":"less","też":"also","także":"also","tylko":"only","nawet":"even","jest":"is","są":"are","był":"was","była":"was (fem.)","było":"was (neut.)","byli":"were","będzie":"will be","być":"to be","ma":"has","mają":"have","mieć":"to have","może":"maybe; can","można":"one may","trzeba":"one must","się":"oneself (reflexive)","siebie":"oneself","dwie":"two (fem.)","dwa":"two"};
+const PL_BUNDLED = [
+{id:"pl-targ",level:"A2",topic:"Daily life",title:"Sobotni targ",
+text:"W każdą sobotę rano idę z babcią na targ. Lubimy przychodzić wcześnie, kiedy owoce są jeszcze świeże. Sprzedawcy układają towar na drewnianych stołach: czerwone pomidory, słodkie jabłka i świeży chleb. Babcia zawsze rozmawia ze wszystkimi i pyta o ich rodziny. Kupujemy warzywa na cały tydzień, a czasem bukiet kwiatów. Potem pijemy kawę na rynku i patrzymy na ludzi. Dla mnie to nie są zwykłe zakupy — to nasz wspólny czas.",
+gloss:["każdą|każdy|each, every","sobotę|sobota|Saturday","rano|rano|in the morning, early","idę|iść|to go (on foot)|impf.; pf. pójść","babcią|babcia|grandmother","targ|targ|market","lubimy|lubić|to like|impf.","przychodzić|przychodzić|to come, arrive|impf.; pf. przyjść","wcześnie|wcześnie|early","owoce|owoc|fruit","świeże|świeży|fresh","sprzedawcy|sprzedawca|seller, vendor","układają|układać|to arrange, lay out|impf.; pf. ułożyć","towar|towar|goods","drewnianych|drewniany|wooden","stołach|stół|table","czerwone|czerwony|red","pomidory|pomidor|tomato","słodkie|słodki|sweet","jabłka|jabłko|apple","świeży|świeży|fresh","chleb|chleb|bread","babcia|babcia|grandmother","rozmawia|rozmawiać|to talk, chat|impf.","wszystkimi|wszyscy|everyone","pyta|pytać|to ask|impf.; pf. zapytać","rodziny|rodzina|family","kupujemy|kupować|to buy|impf.; pf. kupić","warzywa|warzywo|vegetable","cały|cały|whole","tydzień|tydzień|week","czasem|czasem|sometimes","bukiet|bukiet|bouquet","kwiatów|kwiat|flower","pijemy|pić|to drink|impf.","kawę|kawa|coffee","rynku|rynek|market square|The central square of a Polish town","patrzymy|patrzeć|to look, watch|impf.","ludzi|ludzie|people","zwykłe|zwykły|ordinary","zakupy|zakupy|shopping","wspólny|wspólny|shared, common","czas|czas|time"]},
+{id:"pl-deszcz",level:"B1",topic:"Everyday story",title:"Deszczowe popołudnie",
+text:"Tamtego popołudnia deszcz zaskoczył nas na ulicy. Nie mieliśmy parasola, więc pobiegliśmy do małej kawiarni na rogu. W środku było ciepło i pachniało gorącą czekoladą. Usiedliśmy przy oknie i zamówiliśmy dwie parujące filiżanki. Za oknem miasto szarzało, a przechodnie spieszyli się, osłaniając się gazetami. Powoli przestaliśmy patrzeć na zegarek. Rozmawialiśmy godzinami o rzeczach, o których dawno zapomnieliśmy sobie opowiedzieć. Kiedy deszcz wreszcie ustał, żadne z nas nie chciało wychodzić. Czasem najlepsze chwile przychodzą bez zapowiedzi.",
+gloss:["tamtego|tamten|that","popołudnia|popołudnie|afternoon","deszcz|deszcz|rain","zaskoczył|zaskoczyć|to surprise|pf.; impf. zaskakiwać","ulicy|ulica|street","mieliśmy|mieć|to have|impf.","parasola|parasol|umbrella","pobiegliśmy|pobiec|to run (off)|pf.","małej|mały|small","kawiarni|kawiarnia|café","rogu|róg|corner","środku|środek|middle, inside|w środku: inside","ciepło|ciepło|warm; warmth","pachniało|pachnieć|to smell (of)|impf.","gorącą|gorący|hot","czekoladą|czekolada|chocolate","usiedliśmy|usiąść|to sit down|pf.; impf. siadać","oknie|okno|window","zamówiliśmy|zamówić|to order|pf.; impf. zamawiać","parujące|parujący|steaming","filiżanki|filiżanka|cup","oknem|okno|window","miasto|miasto|city","szarzało|szarzeć|to turn gray|impf.","przechodnie|przechodzień|passer-by","spieszyli|spieszyć się|to hurry|impf.","osłaniając|osłaniać|to shield, cover|impf.","gazetami|gazeta|newspaper","powoli|powoli|slowly","przestaliśmy|przestać|to stop (doing)|pf.; impf. przestawać","patrzeć|patrzeć|to look|impf.","zegarek|zegarek|watch","rozmawialiśmy|rozmawiać|to talk|impf.","godzinami|godzina|hour|godzinami: for hours","rzeczach|rzecz|thing","których|który|which","dawno|dawno|long ago","zapomnieliśmy|zapomnieć|to forget|pf.; impf. zapominać","sobie|sobie|to oneself, to each other","opowiedzieć|opowiedzieć|to tell, recount|pf.; impf. opowiadać","wreszcie|wreszcie|finally, at last","ustał|ustać|to cease, stop|pf.","żadne|żaden|none, neither","chciało|chcieć|to want|impf.","wychodzić|wychodzić|to leave, go out|impf.; pf. wyjść","najlepsze|najlepszy|best","chwile|chwila|moment","przychodzą|przychodzić|to come|impf.","zapowiedzi|zapowiedź|announcement|bez zapowiedzi: unannounced"]},
+{id:"pl-miasto",level:"B2",topic:"Society",title:"Miasto, które się zmienia",
+text:"W ostatnich dziesięcioleciach wiele polskich miast przeszło głęboką przemianę. Stare dzielnice, zamieszkane kiedyś przez zwykłe rodziny, stopniowo zapełniają się apartamentami na wynajem i modnymi kawiarniami. To zjawisko, zwane gentryfikacją, budzi sprzeczne reakcje. Z jednej strony przyciąga inwestycje i ożywia zaniedbane kwartały; z drugiej — wypiera dotychczasowych mieszkańców, których nie stać na rosnące czynsze. Władze miejskie stoją przed prawdziwym dylematem: wspierać turystykę, niewątpliwy silnik gospodarki, nie poświęcając duszy dzielnic. Znalezienie tej równowagi pozostaje jednym z największych miejskich wyzwań naszych czasów.",
+gloss:["ostatnich|ostatni|last, recent","dziesięcioleciach|dziesięciolecie|decade","wiele|wiele|many","polskich|polski|Polish","miast|miasto|city","przeszło|przejść|to go through, undergo|pf.; impf. przechodzić","głęboką|głęboki|deep, profound","przemianę|przemiana|transformation","stare|stary|old","dzielnice|dzielnica|district, neighborhood","zamieszkane|zamieszkany|inhabited","kiedyś|kiedyś|once, formerly","zwykłe|zwykły|ordinary","rodziny|rodzina|family","stopniowo|stopniowo|gradually","zapełniają|zapełniać się|to fill up|impf.; pf. zapełnić się","apartamentami|apartament|apartment","wynajem|wynajem|rental|na wynajem: for rent","modnymi|modny|fashionable, trendy","kawiarniami|kawiarnia|café","zjawisko|zjawisko|phenomenon","zwane|zwany|called","gentryfikacją|gentryfikacja|gentrification","budzi|budzić|to awaken; to stir|impf.; pf. obudzić","sprzeczne|sprzeczny|contradictory","reakcje|reakcja|reaction","jednej|jeden|one","strony|strona|side|z jednej strony: on the one hand","przyciąga|przyciągać|to attract|impf.; pf. przyciągnąć","inwestycje|inwestycja|investment","ożywia|ożywiać|to revive, enliven|impf.; pf. ożywić","zaniedbane|zaniedbany|neglected","kwartały|kwartał|block, quarter","drugiej|drugi|second, other|z drugiej (strony): on the other hand","wypiera|wypierać|to push out, displace|impf.; pf. wyprzeć","dotychczasowych|dotychczasowy|existing, long-standing","mieszkańców|mieszkaniec|resident, inhabitant","stać|stać|to afford|nie stać kogoś na: someone can't afford","rosnące|rosnący|growing, rising","czynsze|czynsz|rent","władze|władza|authority, power|(pl.) the authorities","miejskie|miejski|urban, municipal","stoją|stać|to stand|impf.","prawdziwym|prawdziwy|real, true","dylematem|dylemat|dilemma","wspierać|wspierać|to support|impf.; pf. wesprzeć","turystykę|turystyka|tourism","niewątpliwy|niewątpliwy|undoubted","silnik|silnik|engine","gospodarki|gospodarka|economy","poświęcając|poświęcać|to sacrifice|impf.; pf. poświęcić","duszy|dusza|soul","znalezienie|znalezienie|finding","tej|ten|this","równowagi|równowaga|balance","pozostaje|pozostawać|to remain|impf.; pf. pozostać","jednym|jeden|one","największych|największy|biggest, greatest","miejskich|miejski|urban, municipal","wyzwań|wyzwanie|challenge","czasów|czas|time"]}
+];
+const PL_LEVEL_SPECS = {
+  A1: "an absolute beginner. Use ONLY the most common everyday words, very short simple sentences (5–8 words), present tense mostly, lots of repetition of key words. 60–90 words total.",
+  A2: "an elementary learner. Use simple sentences, high-frequency vocabulary, present and simple past tense. 80–110 words total.",
+  B1: "an intermediate learner. Use everyday conversational Polish with some new vocabulary, varied but straightforward sentence structure, both verbal aspects where natural. 110–140 words total.",
+  B2: "an upper-intermediate learner. Use natural, idiomatic Polish as a native writer would; roughly 10–20% of content words should stretch them; natural aspect and case use. 120–160 words total.",
+  C1: "an advanced learner. Use sophisticated, editorial-register Polish with rich vocabulary, participial constructions, and formal style. 130–170 words total.",
+  C2: "a near-native learner. Use elegant, demanding Polish — literary or journalistic register, idioms, refined and nuanced constructions. 130–170 words total."
+};
+// Light Polish suffix stemmer.
+function plStem(word){
+  const w = word.toLowerCase();
+  const cands = new Set([w]);
+  const rules = [
+    // verbs → infinitive
+    [/ują$/,"ować"],[/ujemy$/,"ować"],[/ujecie$/,"ować"],[/ujesz$/,"ować"],[/uje$/,"ować"],[/owali$/,"ować"],[/ował[ao]?$/,"ować"],
+    [/aliśmy$/,"ać"],[/ali$/,"ać"],[/ał[ao]?$/,"ać"],[/amy$/,"ać"],[/acie$/,"ać"],[/ają$/,"ać"],[/asz$/,"ać"],[/am$/,"ać"],[/a$/,"ać"],
+    [/iliśmy$/,"ić"],[/ili$/,"ić"],[/ił[ao]?$/,"ić"],[/imy$/,"ić"],[/icie$/,"ić"],[/isz$/,"ić"],[/i$/,"ić"],
+    [/yliśmy$/,"yć"],[/yli$/,"yć"],[/ył[ao]?$/,"yć"],[/ymy$/,"yć"],[/ysz$/,"yć"],[/y$/,"yć"],
+    // nouns — case endings
+    [/ami$/,"a"],[/ach$/,"a"],[/ą$/,"a"],[/ę$/,"a"],[/y$/,"a"],[/i$/,"a"],[/o$/,"a"],
+    [/ie$/,"a"],[/ie$/,"o"],[/u$/,"o"],[/em$/,"o"],
+    [/owie$/,""],[/ów$/,""],[/owi$/,""],[/em$/,""],[/u$/,""],[/a$/,""],[/y$/,""],[/e$/,""],
+    // adjectives → -y/-i
+    [/ego$/,"y"],[/emu$/,"y"],[/ymi$/,"y"],[/ych$/,"y"],[/ym$/,"y"],[/ej$/,"y"],[/ą$/,"y"],[/e$/,"y"],[/a$/,"y"],
+    [/iego$/,"i"],[/iemu$/,"i"],[/imi$/,"i"],[/ich$/,"i"],[/im$/,"i"],[/ie$/,"i"],[/ia$/,"i"],
+  ];
+  for(const [re, end] of rules){ if(re.test(w)) cands.add(w.replace(re, end)); }
+  // strip Polish diacritics as a loose extra candidate set
+  const flat = x => x.replace(/ą/g,"a").replace(/ę/g,"e").replace(/ó/g,"o").replace(/ł/g,"l").replace(/ż/g,"z").replace(/ź/g,"z").replace(/ć/g,"c").replace(/ś/g,"s").replace(/ń/g,"n");
+  for(const c of [...cands]) cands.add(flat(c));
+  if(w.length>4){ cands.add(w.slice(0,-1)); cands.add(w.slice(0,-2)); }
+  return [...cands];
+}
+const UK_CORE = {"і":"and","й":"and","та":"and; that (fem.)","а":"and, but","але":"but","або":"or","що":"that; what","щоб":"in order to","як":"how, as, like","коли":"when","якщо":"if","бо":"because","же":"emphatic particle","ж":"emphatic particle","чи":"whether, or","не":"not","ні":"no; neither","так":"yes; so","в":"in, into","у":"in, at","на":"on, onto","з":"with; from","із":"with; from","зі":"with","до":"to, until","від":"from","по":"along, according to","за":"behind; for","під":"under","над":"above","при":"at, by","без":"without","для":"for","про":"about","через":"through, because of","між":"between","я":"I","ти":"you","він":"he","вона":"she","воно":"it","ми":"we","ви":"you (pl./formal)","вони":"they","мене":"me","тебе":"you","його":"his, him","її":"her","нас":"us","вас":"you (pl.)","їх":"their, them","мені":"to me","тобі":"to you","йому":"to him","їй":"to her","нам":"to us","вам":"to you (pl.)","їм":"to them","мій":"my","твій":"your","наш":"our","ваш":"your (pl.)","свій":"one's own","цей":"this","ця":"this (fem.)","це":"this, it","ці":"these","цю":"this (fem. acc.)","той":"that","те":"that (neut.)","ті":"those","який":"which, who","весь":"all, whole","вся":"all (fem.)","все":"everything","всі":"everyone, all","кожен":"each, every","інший":"other","сам":"oneself","такий":"such","хто":"who","де":"where","куди":"where to","звідки":"from where","чому":"why","тут":"here","там":"there","зараз":"now","тепер":"now","тоді":"then","потім":"then, afterwards","вже":"already","ще":"still, yet; more","завжди":"always","ніколи":"never","дуже":"very","багато":"much, many","мало":"little, few","більше":"more","менше":"less","теж":"also","також":"also","тільки":"only","навіть":"even","ось":"here (is)","є":"there is; is","був":"was","була":"was (fem.)","було":"was (neut.)","були":"were","буде":"will be","бути":"to be","може":"maybe; can","можна":"one may","треба":"one must","дві":"two (fem.)","два":"two","одне":"one (neut.); each other (одне одному)"};
+const UK_BUNDLED = [
+{id:"uk-rynok",level:"A2",topic:"Daily life",title:"Суботній ринок",
+text:"Щосуботи вранці я йду з бабусею на ринок. Ми любимо приходити рано, коли фрукти ще свіжі. Продавці розкладають товар на дерев'яних столах: червоні помідори, солодкі яблука і свіжий хліб. Бабуся завжди розмовляє з усіма і питає про їхні родини. Ми купуємо овочі на тиждень, а іноді букет квітів. Потім ми п'ємо каву на площі і дивимося на людей. Для мене це не просто покупки — це наш спільний час.",
+gloss:["щосуботи|щосуботи|every Saturday","вранці|вранці|in the morning","йду|іти|to go (on foot)|impf.; pf. піти","бабусею|бабуся|grandmother","ринок|ринок|market","любимо|любити|to love, to like|impf.","приходити|приходити|to come, arrive|impf.; pf. прийти","рано|рано|early","фрукти|фрукт|fruit","свіжі|свіжий|fresh","продавці|продавець|seller, vendor","розкладають|розкладати|to lay out|impf.; pf. розкласти","товар|товар|goods","дерев'яних|дерев'яний|wooden","столах|стіл|table","червоні|червоний|red","помідори|помідор|tomato","солодкі|солодкий|sweet","яблука|яблуко|apple","свіжий|свіжий|fresh","хліб|хліб|bread","бабуся|бабуся|grandmother","розмовляє|розмовляти|to talk, chat|impf.","усіма|усі|everyone","питає|питати|to ask|impf.; pf. запитати","їхні|їхній|their","родини|родина|family","купуємо|купувати|to buy|impf.; pf. купити","овочі|овоч|vegetable","тиждень|тиждень|week","іноді|іноді|sometimes","букет|букет|bouquet","квітів|квітка|flower","п'ємо|пити|to drink|impf.","каву|кава|coffee","площі|площа|square","дивимося|дивитися|to look, watch|impf.","людей|люди|people","просто|просто|simply, just","покупки|покупка|purchase; (pl.) shopping","спільний|спільний|shared, common","час|час|time"]},
+{id:"uk-doshch",level:"B1",topic:"Everyday story",title:"Дощовий вечір",
+text:"Того вечора дощ застав нас просто на вулиці. Парасольки в нас не було, тому ми побігли до маленької кав'ярні на розі. Всередині було тепло і пахло гарячим шоколадом. Ми сіли біля вікна і замовили дві гарячі чашки. За вікном місто ставало сірим, перехожі поспішали, прикриваючись газетами. Поступово ми перестали дивитися на годинник. Ми говорили годинами про те, що давно забули розповісти одне одному. Коли дощ нарешті скінчився, ніхто з нас не хотів іти. Іноді найкращі моменти приходять без попередження.",
+gloss:["того|той|that","вечора|вечір|evening","дощ|дощ|rain","застав|застати|to catch (unexpectedly)|pf.; impf. заставати","просто|просто|right; simply","вулиці|вулиця|street","парасольки|парасолька|umbrella","тому|тому|therefore, so","побігли|побігти|to run (off)|pf.","маленької|маленький|small","кав'ярні|кав'ярня|café","розі|ріг|corner","всередині|всередині|inside","тепло|тепло|warm; warmth","пахло|пахнути|to smell (of)|impf.","гарячим|гарячий|hot","шоколадом|шоколад|chocolate","сіли|сісти|to sit down|pf.; impf. сідати","біля|біля|near, by","вікна|вікно|window","замовили|замовити|to order|pf.; impf. замовляти","гарячі|гарячий|hot","чашки|чашка|cup","вікном|вікно|window","місто|місто|city","ставало|ставати|to become|impf.; pf. стати","сірим|сірий|gray","перехожі|перехожий|passer-by","поспішали|поспішати|to hurry|impf.","прикриваючись|прикриватися|to shield oneself|impf.","газетами|газета|newspaper","поступово|поступово|gradually","перестали|перестати|to stop (doing)|pf.; impf. переставати","годинник|годинник|clock, watch","говорили|говорити|to talk, speak|impf.","годинами|година|hour|годинами: for hours","давно|давно|long ago","забули|забути|to forget|pf.; impf. забувати","розповісти|розповісти|to tell, recount|pf.; impf. розповідати","одному|одне одному|each other|одне одному: to each other","нарешті|нарешті|finally, at last","скінчився|скінчитися|to end|pf.","ніхто|ніхто|no one","хотів|хотіти|to want|impf.","іти|іти|to go, leave|impf.","найкращі|найкращий|best","моменти|момент|moment","приходять|приходити|to come|impf.","попередження|попередження|warning|без попередження: unannounced"]},
+{id:"uk-misto",level:"B2",topic:"Society",title:"Місто, що змінюється",
+text:"За останні десятиліття багато українських міст пережили глибокі зміни. Старі квартали, де колись жили звичайні родини, поступово заповнюються туристичними квартирами та модними кав'ярнями. Це явище, відоме як джентрифікація, викликає суперечливі почуття. З одного боку, воно приваблює інвестиції та повертає життя занедбаним вулицям; з іншого — витісняє давніх мешканців, яким не по кишені зросла оренда. Міська влада стоїть перед непростим вибором: розвивати туризм, безперечний двигун економіки, не жертвуючи душею кварталів. Знайти цю рівновагу — одне з головних міських завдань нашого часу.",
+gloss:["останні|останній|last, recent","десятиліття|десятиліття|decade","українських|український|Ukrainian","міст|місто|city","пережили|пережити|to live through, experience|pf.; impf. переживати","глибокі|глибокий|deep, profound","зміни|зміна|change","старі|старий|old","квартали|квартал|block, quarter","колись|колись|once, formerly","жили|жити|to live|impf.","звичайні|звичайний|ordinary","родини|родина|family","поступово|поступово|gradually","заповнюються|заповнюватися|to fill up|impf.; pf. заповнитися","туристичними|туристичний|tourist (adj.)","квартирами|квартира|apartment","модними|модний|fashionable, trendy","кав'ярнями|кав'ярня|café","явище|явище|phenomenon","відоме|відомий|known, well-known","джентрифікація|джентрифікація|gentrification","викликає|викликати|to provoke, cause|impf.","суперечливі|суперечливий|contradictory","почуття|почуття|feeling","одного|один|one","боку|бік|side|з одного боку: on the one hand","приваблює|приваблювати|to attract|impf.; pf. привабити","інвестиції|інвестиція|investment","повертає|повертати|to return, bring back|impf.; pf. повернути","життя|життя|life","занедбаним|занедбаний|neglected, abandoned","вулицям|вулиця|street","іншого|інший|other|з іншого (боку): on the other hand","витісняє|витісняти|to push out, displace|impf.; pf. витіснити","давніх|давній|long-standing, old","мешканців|мешканець|resident, inhabitant","яким|який|which, whom","кишені|кишеня|pocket|не по кишені: unaffordable","зросла|зрости|to grow, rise|pf.; impf. зростати","оренда|оренда|rent","міська|міський|urban, municipal","влада|влада|authority, power","стоїть|стояти|to stand|impf.","перед|перед|before, in front of","непростим|непростий|not simple, tricky","вибором|вибір|choice","розвивати|розвивати|to develop|impf.; pf. розвинути","туризм|туризм|tourism","безперечний|безперечний|undoubted","двигун|двигун|engine","економіки|економіка|economy","жертвуючи|жертвувати|to sacrifice|impf.; pf. пожертвувати","душею|душа|soul","знайти|знайти|to find|pf.; impf. знаходити","рівновагу|рівновага|balance","головних|головний|main, chief","міських|міський|urban, municipal","завдань|завдання|task, challenge","часу|час|time"]}
+];
+const UK_LEVEL_SPECS = {
+  A1: "an absolute beginner. Use ONLY the most common everyday words, very short simple sentences (5–8 words), present tense mostly, lots of repetition of key words. 60–90 words total.",
+  A2: "an elementary learner. Use simple sentences, high-frequency vocabulary, present and simple past tense. 80–110 words total.",
+  B1: "an intermediate learner. Use everyday conversational Ukrainian with some new vocabulary, varied but straightforward sentence structure, both verbal aspects where natural. 110–140 words total.",
+  B2: "an upper-intermediate learner. Use natural, idiomatic Ukrainian as a native writer would; roughly 10–20% of content words should stretch them; natural aspect use. 120–160 words total.",
+  C1: "an advanced learner. Use sophisticated, editorial-register Ukrainian with rich vocabulary, participial constructions, and formal style. 130–170 words total.",
+  C2: "a near-native learner. Use elegant, demanding Ukrainian — literary or journalistic register, idioms, refined and nuanced constructions. 130–170 words total."
+};
+// Light Ukrainian suffix stemmer. Input arrives apostrophe-stripped (cleanWord), matching glossMap keys.
+function ukStem(word){
+  const w = word.toLowerCase();
+  const cands = new Set([w]);
+  const rules = [
+    // verbs → infinitive
+    [/уються$/,"уватися"],[/ується$/,"уватися"],[/ують$/,"увати"],[/ує$/,"увати"],[/ували$/,"увати"],[/ував$/,"увати"],[/увала$/,"увати"],
+    [/юються$/,"юватися"],[/юється$/,"юватися"],[/юють$/,"ювати"],[/ює$/,"ювати"],[/ювали$/,"ювати"],[/ював$/,"ювати"],
+    [/аються$/,"атися"],[/ається$/,"атися"],[/ають$/,"ати"],[/аємо$/,"ати"],[/аєте$/,"ати"],[/аєш$/,"ати"],[/ає$/,"ати"],[/али$/,"ати"],[/ал[ао]$/,"ати"],[/ав$/,"ати"],
+    [/яють$/,"яти"],[/яє$/,"яти"],[/яли$/,"яти"],[/яв$/,"яти"],
+    [/иться$/,"итися"],[/яться$/,"итися"],[/ився$/,"итися"],[/илася$/,"итися"],[/илися$/,"итися"],
+    [/ить$/,"ити"],[/ять$/,"ити"],[/имо$/,"ити"],[/иш$/,"ити"],[/или$/,"ити"],[/ил[ао]$/,"ити"],[/ив$/,"ити"],
+    [/іє$/,"іти"],[/іють$/,"іти"],[/іли$/,"іти"],[/ів$/,"іти"],
+    // nouns — case endings
+    [/іями$/,"ія"],[/іях$/,"ія"],[/ією$/,"ія"],[/ії$/,"ія"],[/ію$/,"ія"],
+    [/ами$/,"а"],[/ах$/,"а"],[/ою$/,"а"],[/у$/,"а"],[/и$/,"а"],[/і$/,"а"],
+    [/ями$/,"я"],[/ях$/,"я"],[/ею$/,"я"],[/ю$/,"я"],
+    [/ів$/,""],[/ом$/,""],[/ові$/,""],[/ам$/,""],[/у$/,""],[/а$/,""],[/и$/,""],[/і$/,""],
+    // adjectives → -ий/-ій
+    [/ого$/,"ий"],[/ому$/,"ий"],[/ими$/,"ий"],[/их$/,"ий"],[/им$/,"ий"],[/ій$/,"ий"],[/ої$/,"ий"],[/ою$/,"ий"],[/а$/,"ий"],[/е$/,"ий"],[/і$/,"ий"],[/у$/,"ий"],
+    [/ього$/,"ій"],[/ьому$/,"ій"],[/іми$/,"ій"],[/іх$/,"ій"],[/ім$/,"ій"],[/я$/,"ій"],[/є$/,"ій"],
+  ];
+  for(const [re, end] of rules){ if(re.test(w)) cands.add(w.replace(re, end)); }
+  if(w.length>4){ cands.add(w.slice(0,-1)); cands.add(w.slice(0,-2)); }
+  return [...cands];
+}
+
 // ═══ LANGUAGE PACKS ═══
 // Each pack bundles everything language-specific: display name, TTS voice code,
 // function-word glossary, bundled passages, level specs, and an offline stemmer.
@@ -557,13 +697,23 @@ const PACKS = {
     code: "el", name: "Greek", native: "Ελληνικά",
     voicePrefix: "el", voiceLang: "el-GR",
     hasArticles: true,                 // affects gloss prompt wording ("lemma with article")
+    fillers: "λοιπόν, έλα, ρε συ, ας πούμε, καλέ, βρε",
     core: EL_CORE, bundled: EL_BUNDLED, levelSpecs: EL_LEVEL_SPECS, stem: elStem
   },
-  es: { code:"es", name:"Spanish",    native:"Español",    voicePrefix:"es", voiceLang:"es-ES", hasArticles:true, core:ES_CORE, bundled:ES_BUNDLED, levelSpecs:ES_LEVEL_SPECS },
-  fr: { code:"fr", name:"French",     native:"Français",   voicePrefix:"fr", voiceLang:"fr-FR", hasArticles:true, core:FR_CORE, bundled:FR_BUNDLED, levelSpecs:FR_LEVEL_SPECS },
-  it: { code:"it", name:"Italian",    native:"Italiano",   voicePrefix:"it", voiceLang:"it-IT", hasArticles:true, core:IT_CORE, bundled:IT_BUNDLED, levelSpecs:IT_LEVEL_SPECS },
-  de: { code:"de", name:"German",     native:"Deutsch",    voicePrefix:"de", voiceLang:"de-DE", hasArticles:true, core:DE_CORE, bundled:DE_BUNDLED, levelSpecs:DE_LEVEL_SPECS },
-  pt: { code:"pt", name:"Portuguese", native:"Português",  voicePrefix:"pt", voiceLang:"pt-PT", hasArticles:true, core:PT_CORE, bundled:PT_BUNDLED, levelSpecs:PT_LEVEL_SPECS }
+  es: { code:"es", name:"Spanish",    native:"Español",    voicePrefix:"es", voiceLang:"es-ES", hasArticles:true, fillers:"pues, bueno, oye, vale, o sea, anda, venga", core:ES_CORE, bundled:ES_BUNDLED, levelSpecs:ES_LEVEL_SPECS },
+  fr: { code:"fr", name:"French",     native:"Français",   voicePrefix:"fr", voiceLang:"fr-FR", hasArticles:true, fillers:"ben, bah, écoute, dis donc, quoi, bref, allez", core:FR_CORE, bundled:FR_BUNDLED, levelSpecs:FR_LEVEL_SPECS },
+  it: { code:"it", name:"Italian",    native:"Italiano",   voicePrefix:"it", voiceLang:"it-IT", hasArticles:true, fillers:"beh, dai, allora, guarda, insomma, cioè, ma va", core:IT_CORE, bundled:IT_BUNDLED, levelSpecs:IT_LEVEL_SPECS },
+  de: { code:"de", name:"German",     native:"Deutsch",    voicePrefix:"de", voiceLang:"de-DE", hasArticles:true, fillers:"na, halt, eben, ach so, komm, echt, na ja", core:DE_CORE, bundled:DE_BUNDLED, levelSpecs:DE_LEVEL_SPECS },
+  pt: { code:"pt", name:"Portuguese", native:"Português",  voicePrefix:"pt", voiceLang:"pt-PT", hasArticles:true, fillers:"pois, olha, então, pá, pronto, ora, está bem", core:PT_CORE, bundled:PT_BUNDLED, levelSpecs:PT_LEVEL_SPECS },
+  ru: { code:"ru", name:"Russian",    native:"Русский",    voicePrefix:"ru", voiceLang:"ru-RU", hasArticles:false, fillers:"ну, вот, же, слушай, ладно, кстати, давай",
+        glossExtra:"For verbs, give the lemma in the aspect used in the text and note its aspect partner (e.g. pf.; impf. покупать).",
+        core:RU_CORE, bundled:RU_BUNDLED, levelSpecs:RU_LEVEL_SPECS, stem:ruStem },
+  pl: { code:"pl", name:"Polish",     native:"Polski",     voicePrefix:"pl", voiceLang:"pl-PL", hasArticles:false, fillers:"no, właśnie, słuchaj, wiesz, dobra, przecież, w ogóle",
+        glossExtra:"For verbs, give the lemma in the aspect used in the text and note its aspect partner (e.g. pf.; impf. kupować).",
+        core:PL_CORE, bundled:PL_BUNDLED, levelSpecs:PL_LEVEL_SPECS, stem:plStem },
+  uk: { code:"uk", name:"Ukrainian",  native:"Українська", voicePrefix:"uk", voiceLang:"uk-UA", hasArticles:false, fillers:"ну, от, слухай, до речі, добре, давай, же",
+        glossExtra:"For verbs, give the lemma in the aspect used in the text and note its aspect partner (e.g. pf.; impf. купувати).",
+        core:UK_CORE, bundled:UK_BUNDLED, levelSpecs:UK_LEVEL_SPECS, stem:ukStem }
 };
 function activeLang(){ return (settings && settings.lang) || "el"; }
 function activePack(){ return PACKS[activeLang()] || PACKS.el; }
@@ -599,7 +749,7 @@ async function photoGo(ev){
     const media = file.type || "image/jpeg";
     const ocrPrompt = `Extract ALL the ${langName()} text visible in this image, exactly as written, preserving line breaks. Return ONLY the extracted text with no commentary, translation, or markdown. If there is no ${langName()} text, return an empty response.`;
     const text = await callVision(ocrPrompt, b64, media, 2000);
-    if(!text || text.trim().length < 2){ genMsg = "No Greek text found in that photo. Try a clearer, closer shot."; genBusy=false; render(); return; }
+    if(!text || text.trim().length < 2){ genMsg = `No ${langName()} text found in that photo. Try a clearer, closer shot.`; genBusy=false; render(); return; }
     let ocr = text.trim();
     // Cap so the gloss JSON can't overflow the token limit (a full page can be too much at once)
     const CAP = 1500;
@@ -613,10 +763,10 @@ async function glossPastedText(text){
   if(!navigator.onLine){ genMsg = "You're offline — glossing needs internet."; render(); return; }
   genBusy = true; genMsg = "Glossing your text…"; render();
   const L = langName();
-  const prompt = `A ${L} learner pasted this text. Clean it up lightly (fix obvious spacing/OCR issues, keep the original wording and line breaks), give it a short ${L} title, and gloss EVERY content word (skip articles, common particles, prepositions). For each: exact surface form as it appears (lowercase), dictionary lemma${langHasArticles()?" with article":""}, concise English translation in context, optional short note.
+  const prompt = `A ${L} learner pasted this text. Clean it up lightly (fix obvious spacing/OCR issues, keep the original wording and line breaks), give it a short ${L} title, and gloss EVERY content word (skip articles, common particles, prepositions). For each: exact surface form as it appears (lowercase), dictionary lemma${langHasArticles()?" with article":""}, concise English translation in context, optional short note.${activePack().glossExtra ? " " + activePack().glossExtra : ""}
 TEXT:\n"""${text.slice(0,4000)}"""
 Respond ONLY with valid JSON, no markdown:
-{"title":"short Greek title","text":"the cleaned passage","gloss":[["surface","lemma","translation","note or empty"],...]}`;
+{"title":"short ${L} title","text":"the cleaned passage","gloss":[["surface","lemma","translation","note or empty"],...]}`;
   try{
     const raw = await callClaude(prompt, 16000);
     let p;
@@ -646,12 +796,12 @@ async function generateAndCache(topic){
 
 Write a ${L} ${isDlg ? "dialogue" : "passage"} on: "${topic}".${isDlg ? `
 
-Format it as a natural spoken conversation between two people. Each utterance goes on its own line, starting with an em-dash (—). Use genuinely colloquial SPOKEN Greek — the fillers, interjections and particles real speakers use (λοιπόν, έλα, ρε συ, ας πούμε, καλέ, βρε) suited to the level — not written-register Greek. Include the small conversational moves: greetings, reacting, agreeing, teasing, changing subject.` : ""}${(due.length && !["A1","A2"].includes(settings.level)) ? ` Where natural, include some of these study words: ${due.join(", ")}.` : ""}
+Format it as a natural spoken conversation between two people. Each utterance goes on its own line, starting with an em-dash (—). Use genuinely colloquial SPOKEN ${L} — the fillers, interjections and particles real speakers use${activePack().fillers?` (${activePack().fillers})`:""} suited to the level — not written-register ${L}. Include the small conversational moves: greetings, reacting, agreeing, teasing, changing subject.` : ""}${(due.length && !["A1","A2"].includes(settings.level)) ? ` Where natural, include some of these study words: ${due.join(", ")}.` : ""}
 
-Then gloss EVERY content word in the passage (skip only articles, common particles and prepositions). For each, give: the exact surface form as it appears (lowercase), the dictionary lemma${langHasArticles()?" with its article":""}, a concise English translation as used in context, and optionally a short usage note.
+Then gloss EVERY content word in the passage (skip only articles, common particles and prepositions). For each, give: the exact surface form as it appears (lowercase), the dictionary lemma${langHasArticles()?" with its article":""}, a concise English translation as used in context, and optionally a short usage note.${activePack().glossExtra ? " " + activePack().glossExtra : ""}
 
 Respond ONLY with valid JSON, no markdown:
-{"title":"short Greek title","text":"the passage","gloss":[["surface","lemma","translation","note or empty string"],...]}`;
+{"title":"short ${L} title","text":"the passage","gloss":[["surface","lemma","translation","note or empty string"],...]}`;
   try{
     const raw = await callClaude(prompt, 3500);
     const p = parseAIJSON(raw);
@@ -750,7 +900,7 @@ function lookupHTML(){
     const canLive = settings.apiKey && navigator.onLine;
     return `<div class="card lookup"><div style="font-size:14.5px;color:#6B7683;">
       <b>${esc(l.surface)}</b> isn't in the offline glossary.${l.error?` (${esc(l.error)})`:""}
-      ${canLive ? `<div style="margin-top:10px;"><button class="btn" style="width:100%;" onclick="doLive()">Look up online with Claude</button></div>` : `<div style="margin-top:6px;">Connect to the internet (with an API key in Settings) to look it up live.</div>`}
+      ${canLive ? `<div style="margin-top:10px;"><button class="btn" style="width:100%;" onclick="doLive()">Look up online with AI</button></div>` : `<div style="margin-top:6px;">Connect to the internet (with an API key in Settings) to look it up live.</div>`}
     </div></div>`;
   }
   return `<div class="card lookup">
@@ -841,7 +991,7 @@ function render(){
         <span style="color:#C89B3C;font-size:18px;transform:rotate(${generateOpen?"90":"0"}deg);transition:transform .2s;">\u203a</span>
       </div>
       ${generateOpen?`<div style="padding:0 16px 16px;">
-        <div class="row"><div class="muted">Choose a level and topic; Claude writes and glosses it.</div>
+        <div class="row"><div class="muted">Choose a level and topic; the AI writes and glosses it.</div>
           <button class="btn sec" style="padding:5px 10px;font-size:12px;flex-shrink:0;" onclick="showCefrHelp()">Levels?</button></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;" id="genLevels">
           ${["A1","A2","B1","B2","C1","C2"].map(l=>`<button class="chip${settings.level===l?" on":""}" onclick="setLevel('${l}')">${l}</button>`).join("")}
@@ -858,15 +1008,15 @@ function render(){
     </div>
     <div class="card" style="padding:0;overflow:hidden;">
       <div onclick="toggleAnalyze()" style="padding:16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
-        <div style="font-weight:700;color:#1E3A5C;">Analyze Greek text <span class="muted">(article, lyrics, photo)</span></div>
+        <div style="font-weight:700;color:#1E3A5C;">Analyze ${esc(langName())} text <span class="muted">(article, lyrics, photo)</span></div>
         <span style="color:#C89B3C;font-size:18px;transform:rotate(${analyzeOpen?"90":"0"}deg);transition:transform .2s;">›</span>
       </div>
       ${analyzeOpen?`<div style="padding:0 16px 16px;">
         <div class="muted" style="margin:0 0 10px;">Paste text or snap a photo. It's glossed word-by-word and cached for offline reading &amp; tapping.</div>
-        <textarea id="pasteIn" placeholder="Paste Greek text here…" style="width:100%;min-height:90px;padding:10px;border-radius:10px;border:1.5px solid #D8D2C4;font-family:inherit;font-size:15px;box-sizing:border-box;"></textarea>
+        <textarea id="pasteIn" placeholder="Paste ${esc(langName())} text here…" style="width:100%;min-height:90px;padding:10px;border-radius:10px;border:1.5px solid #D8D2C4;font-family:inherit;font-size:15px;box-sizing:border-box;"></textarea>
         <button class="btn" style="margin-top:8px;width:100%;" onclick="pasteGo()" ${genBusy?"disabled":""}>${genBusy?"…":"Gloss & save"}</button>
         <div class="muted" style="margin:12px 0 6px;text-align:center;">— or —</div>
-        <label class="btn sec" style="width:100%;display:block;text-align:center;box-sizing:border-box;">📷 Snap a photo of Greek text
+        <label class="btn sec" style="width:100%;display:block;text-align:center;box-sizing:border-box;">📷 Snap a photo of ${esc(langName())} text
           <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="photoGo(event)"></label>
         <div class="muted" style="margin-top:6px;font-size:12.5px;">Fill the frame with the text, good light, hold steady.</div>
       </div>`:""}
@@ -1076,7 +1226,7 @@ window.speakPassage = () => window.togglePlay();
 window.saveLookup = saveLookup;
 window.answer = answer;
 window.delCard = delCard;
-window.genGo = () => { generateOpen = true; const t = $("topicIn").value.trim() || "Greek current affairs"; generateAndCache(t); };
+window.genGo = () => { generateOpen = true; const t = $("topicIn").value.trim() || (langName() + " current affairs"); generateAndCache(t); };
 window.setSpeed = k => { settings.speed = k; save(LS.settings, settings); render(); };
 window.setLang = code => {
   if(!PACKS[code] || code===activeLang()) return;
