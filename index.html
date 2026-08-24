@@ -67,7 +67,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = "v11";
+const APP_VERSION = "v12";
 const SPEEDS = { fast: 0.92, medium: 0.69, slow: 0.52 };
 function curRate(){ return SPEEDS[settings.speed] || SPEEDS.fast; }
 function wordRate(){ return curRate() * 0.9; }
@@ -109,8 +109,10 @@ gloss:["μύθος|ο μύθος|myth","ικάρου|ο Ίκαρος|Icarus","ε
 // ── State ──
 let deck = load(LS.deck, []);
 let customLib = load(LS.lib, []);           // cached AI-generated passages
-let settings = load(LS.settings, { apiKey:"", model:"claude-sonnet-5", level:"B2" });
+let settings = load(LS.settings, { apiKey:"", model:"claude-sonnet-5", level:"B2", provider:"anthropic" });
 if(settings.model==="claude-sonnet-4-6") settings.model = "claude-sonnet-5";
+if(!settings.provider) settings.provider = "anthropic";
+if(!settings.models) settings.models = {};   // per-provider model overrides
 let tab = "read", activeP = null, lookupState = null;
 let queue = [], revealed = false, sessionDone = 0;
 let reviewMode = "recognition"; // recognition | recall | cloze
@@ -247,22 +249,74 @@ function stopPlayback(){
 if("speechSynthesis" in window) speechSynthesis.getVoices(); // warm up voice list
 
 // ── Anthropic API (online mode, bring-your-own-key) ──
-async function callClaude(prompt, maxTokens){
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method:"POST",
-    headers:{
-      "content-type":"application/json",
-      "x-api-key": settings.apiKey,
-      "anthropic-version":"2023-06-01",
-      "anthropic-dangerous-direct-browser-access":"true"
-    },
-    body: JSON.stringify({ model: settings.model, max_tokens: maxTokens||2000,
-      messages:[{role:"user", content:prompt}] })
-  });
-  if(!res.ok){ const err = await res.json().catch(()=>({})); throw new Error(err?.error?.message || ("HTTP "+res.status)); }
-  const data = await res.json();
-  return data.content.filter(b=>b.type==="text").map(b=>b.text).join("\n").replace(/```json|```/g,"").trim();
+// ── Provider registry: each defines endpoint, headers, request body, and response parsing ──
+const PROVIDERS = {
+  anthropic: {
+    label: "Claude (Anthropic)",
+    defaultModel: "claude-sonnet-5",
+    keyHint: "sk-ant-…",
+    keyUrl: "console.anthropic.com",
+    note: "Best quality for glossing. Paid (pay-as-you-go).",
+    async call(prompt, maxTokens, model, key){
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{ "content-type":"application/json", "x-api-key":key,
+          "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
+        body: JSON.stringify({ model, max_tokens:maxTokens||2000, messages:[{role:"user",content:prompt}] })
+      });
+      if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e?.error?.message||("HTTP "+res.status)); }
+      const d = await res.json();
+      return d.content.filter(b=>b.type==="text").map(b=>b.text).join("\n");
+    }
+  },
+  gemini: {
+    label: "Gemini (Google)",
+    defaultModel: "gemini-3-flash",
+    keyHint: "AIza…",
+    keyUrl: "aistudio.google.com/apikey",
+    note: "Has a FREE tier (Flash models) — no card needed. Great for a no-cost setup.",
+    async call(prompt, maxTokens, model, key){
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+      const res = await fetch(url, {
+        method:"POST", headers:{ "content-type":"application/json" },
+        body: JSON.stringify({ contents:[{ parts:[{ text:prompt }] }],
+          generationConfig:{ maxOutputTokens:maxTokens||2000 } })
+      });
+      if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e?.error?.message||("HTTP "+res.status)); }
+      const d = await res.json();
+      return (d.candidates?.[0]?.content?.parts||[]).map(p=>p.text||"").join("\n");
+    }
+  },
+  openai: {
+    label: "OpenAI / OpenRouter / other",
+    defaultModel: "gpt-5.6",
+    keyHint: "sk-… or sk-or-…",
+    keyUrl: "platform.openai.com or openrouter.ai/keys",
+    note: "OpenAI-format. For OpenRouter (400+ models incl. Claude/Gemini/Llama) set Base URL to https://openrouter.ai/api/v1 and use a model like anthropic/claude-sonnet-5.",
+    async call(prompt, maxTokens, model, key){
+      const base = (settings.baseUrl && settings.baseUrl.trim()) || "https://api.openai.com/v1";
+      const res = await fetch(base.replace(/\/$/,"") + "/chat/completions", {
+        method:"POST", headers:{ "content-type":"application/json", "authorization":"Bearer "+key },
+        body: JSON.stringify({ model, max_tokens:maxTokens||2000, messages:[{role:"user",content:prompt}] })
+      });
+      if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e?.error?.message||e?.error||("HTTP "+res.status)); }
+      const d = await res.json();
+      return d.choices?.[0]?.message?.content || "";
+    }
+  }
+};
+function currentProvider(){ return PROVIDERS[settings.provider] || PROVIDERS.anthropic; }
+function currentModel(){ return (settings.models && settings.models[settings.provider]) || currentProvider().defaultModel; }
+
+async function callAI(prompt, maxTokens){
+  const prov = currentProvider();
+  const key = settings.apiKey;
+  const model = currentModel();
+  const text = await prov.call(prompt, maxTokens, model, key);
+  return String(text||"").replace(/```json|```/g,"").trim();
 }
+// back-compat alias so existing call sites keep working
+const callClaude = callAI;
 
 const LEVEL_SPECS = {
   A1: "an absolute beginner. Use ONLY the most common everyday words, very short simple sentences (5–8 words), present tense mostly, lots of repetition of key words. 60–90 words total.",
@@ -274,7 +328,7 @@ const LEVEL_SPECS = {
 };
 
 async function glossPastedText(text){
-  if(!settings.apiKey){ genMsg = "Add your Anthropic API key in Settings first."; render(); return; }
+  if(!settings.apiKey){ genMsg = "Add an AI provider key in Settings first (tap \"How this works\")."; render(); return; }
   if(!navigator.onLine){ genMsg = "You're offline — glossing needs internet."; render(); return; }
   genBusy = true; genMsg = "Glossing your text…"; render();
   const prompt = `A Greek learner pasted this text. Clean it up lightly (fix obvious spacing/OCR issues, keep the original wording and line breaks), give it a short Greek title, and gloss EVERY content word (skip articles, common particles, prepositions). For each: exact surface form as it appears (lowercase), dictionary lemma with article, concise English translation in context, optional short note.
@@ -293,7 +347,7 @@ Respond ONLY with valid JSON, no markdown:
   genBusy = false; render();
 }
 async function generateAndCache(topic){
-  if(!settings.apiKey){ genMsg = "Add your Anthropic API key in Settings first."; render(); return; }
+  if(!settings.apiKey){ genMsg = "Add an AI provider key in Settings first (tap \"How this works\")."; render(); return; }
   if(!navigator.onLine){ genMsg = "You're offline — generation needs internet."; render(); return; }
   genBusy = true; genMsg = "Generating and glossing a new passage…"; render();
   const due = deck.filter(c=>c.due<=Date.now()).slice(0,8).map(c=>c.lemma);
@@ -419,6 +473,37 @@ function lookupHTML(){
   </div>`;
 }
 
+function apiHelpHTML(){
+  return `<div class="card" style="border:2px solid #C89B3C;">
+    <div class="row"><div style="font-weight:700;color:#1E3A5C;font-size:17px;">Setting up online mode</div>
+      <button class="btn sec" style="padding:6px 12px;font-size:13px;" onclick="closeApiHelp()">Close ✕</button></div>
+    <div class="muted" style="margin-top:10px;line-height:1.6;font-size:14px;color:#3A4451;">
+      ΛΕΞΙΣ works fully offline with its built-in library. To generate <b>your own</b> passages, paste any Greek text, or look words up live, connect an AI provider — you bring the key, and there's no extra charge from ΛΕΞΙΣ.
+    </div>
+    <div style="margin-top:14px;font-weight:700;color:#1E3A5C;">The free option (recommended to start)</div>
+    <div class="muted" style="margin-top:4px;line-height:1.6;font-size:14px;">
+      <b>Google Gemini</b> has a free tier with no credit card:
+      <br>1. Go to <b>aistudio.google.com/apikey</b> and sign in with a Google account.
+      <br>2. Tap “Create API key” and copy it.
+      <br>3. Here in Settings, choose provider <b>Gemini</b>, paste the key, Save.
+      <br>That's it — free generation on the Flash models.
+    </div>
+    <div style="margin-top:14px;font-weight:700;color:#1E3A5C;">Best quality</div>
+    <div class="muted" style="margin-top:4px;line-height:1.6;font-size:14px;">
+      <b>Claude</b> (console.anthropic.com) gives the best glosses. Pay-as-you-go, typically pennies per passage.
+    </div>
+    <div style="margin-top:14px;font-weight:700;color:#1E3A5C;">Any model (power users)</div>
+    <div class="muted" style="margin-top:4px;line-height:1.6;font-size:14px;">
+      Choose <b>OpenAI / OpenRouter / other</b>. For <b>OpenRouter</b> (one key, 400+ models incl. Claude, GPT, Gemini, Llama):
+      <br>1. Get a key at <b>openrouter.ai/keys</b>.
+      <br>2. Set Base URL to <b>https://openrouter.ai/api/v1</b>.
+      <br>3. Set Model to e.g. <b>anthropic/claude-sonnet-5</b> or a <b>:free</b> model.
+    </div>
+    <div class="muted" style="margin-top:14px;font-size:13px;color:#8A6D1F;">
+      Your key is stored only on this device and sent directly to the provider you choose. Gemini's free tier may use content to improve Google's products — fine for language practice, but don't paste anything sensitive.
+    </div>
+  </div>`;
+}
 function render(){
   $("statSaved").textContent = deck.length;
   $("statDue").textContent = dueCards().length;
@@ -551,10 +636,22 @@ function render(){
   }
 
   if(tab==="settings"){
+    const prov = currentProvider();
     html += `<div class="card">
-      <div style="font-weight:700;color:#1E3A5C;">Online mode (optional)</div>
-      <div class="muted" style="margin:6px 0 12px;">With an Anthropic API key, you can generate new fully-glossed passages while online. They're cached on this device and readable offline. Get a key at console.anthropic.com. It's stored only on this phone.</div>
-      <input type="password" id="keyIn" placeholder="sk-ant-…" value="${esc(settings.apiKey)}">
+      <div class="row"><div style="font-weight:700;color:#1E3A5C;">Online mode (optional)</div>
+        <button class="btn sec" style="padding:6px 12px;font-size:13px;" onclick="showApiHelp()">How this works</button></div>
+      <div class="muted" style="margin:6px 0 10px;">Bring your own AI key for unlimited custom passages and live lookups. Stored only on this phone. The bundled library always works without any key.</div>
+      <label class="muted">AI provider</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px;">
+        ${Object.keys(PROVIDERS).map(pk=>`<button class="chip${settings.provider===pk?" on":""}" onclick="setProvider('${pk}')">${PROVIDERS[pk].label}</button>`).join("")}
+      </div>
+      <div class="muted" style="margin-bottom:8px;font-size:13px;color:#8A6D1F;">${esc(prov.note)}</div>
+      <label class="muted">API key <span style="opacity:.7;">(get one at ${esc(prov.keyUrl)})</span></label>
+      <input type="password" id="keyIn" placeholder="${esc(prov.keyHint)}" value="${esc(settings.apiKey)}" style="margin-top:4px;">
+      <label class="muted" style="display:block;margin-top:10px;">Model <span style="opacity:.7;">(optional — default: ${esc(prov.defaultModel)})</span></label>
+      <input type="text" id="modelIn" placeholder="${esc(prov.defaultModel)}" value="${esc((settings.models&&settings.models[settings.provider])||"")}" style="margin-top:4px;">
+      ${settings.provider==="openai"?`<label class="muted" style="display:block;margin-top:10px;">Base URL <span style="opacity:.7;">(OpenRouter: https://openrouter.ai/api/v1)</span></label>
+      <input type="text" id="baseIn" placeholder="https://api.openai.com/v1" value="${esc(settings.baseUrl||"")}" style="margin-top:4px;">`:""}
       <div style="margin-top:10px;">
         <label class="muted">Speech speed</label>
         <div style="display:flex;gap:6px;margin-top:6px;">
@@ -578,6 +675,7 @@ function render(){
     </div>`;
   }
 
+  if(apiHelpOpen) html = apiHelpHTML() + html;
   $("main").innerHTML = html;
 
   // wire word taps (event delegation)
@@ -641,9 +739,19 @@ window.doLive = () => { if(lookupState) liveLookup(lookupState.surface, lookupSt
 window.saveSettings = () => {
   settings.apiKey = $("keyIn").value.trim();
   settings.level = $("lvlIn").value;
+  if($("modelIn")){ const m=$("modelIn").value.trim(); settings.models = settings.models||{};
+    if(m) settings.models[settings.provider]=m; else delete settings.models[settings.provider]; }
+  if($("baseIn")) settings.baseUrl = $("baseIn").value.trim();
   save(LS.settings, settings);
   $("setMsg").textContent = "Saved ✓";
 };
+window.setProvider = (pk) => {
+  // save the key field first so switching doesn't lose an entered key
+  if($("keyIn")) settings.apiKey = $("keyIn").value.trim();
+  settings.provider = pk; save(LS.settings, settings); render();
+};
+window.showApiHelp = () => { apiHelpOpen = true; render(); };
+window.closeApiHelp = () => { apiHelpOpen = false; render(); };
 window.exportDeck = () => {
   const blob = new Blob([JSON.stringify({deck, customLib}, null, 2)], {type:"application/json"});
   const a = document.createElement("a");
