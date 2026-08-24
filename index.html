@@ -67,7 +67,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = "v13";
+const APP_VERSION = "v13a";
 const SPEEDS = { fast: 0.92, medium: 0.69, slow: 0.52 };
 function curRate(){ return SPEEDS[settings.speed] || SPEEDS.fast; }
 function wordRate(){ return curRate() * 0.9; }
@@ -363,6 +363,28 @@ async function callVision(prompt, b64, media, maxTokens){
   const text = await prov.vision(prompt, b64, media, maxTokens, currentModel(), settings.apiKey);
   return String(text||"").replace(/```json|```/g,"").trim();
 }
+// Robust JSON extraction — tolerates preamble, fences, trailing prose, trailing commas,
+// and (critically for vision OCR) reports truncation clearly instead of "Unexpected EOF".
+function parseAIJSON(raw){
+  if(!raw || !raw.trim()) throw new Error("empty response (check API key / quota)");
+  let clean = raw.replace(/```json|```/g,"").trim();
+  const firstObj = clean.indexOf("{"), firstArr = clean.indexOf("[");
+  const cands = [firstObj, firstArr].filter(i=>i>=0);
+  if(!cands.length) throw new Error("no JSON in response");
+  const start = Math.min(...cands);
+  const end = Math.max(clean.lastIndexOf("}"), clean.lastIndexOf("]"));
+  let slice = (end>start) ? clean.slice(start, end+1) : clean.slice(start);
+  try{ return JSON.parse(slice); }
+  catch(e){
+    try{ return JSON.parse(slice.replace(/,(\s*[}\]])/g,"$1")); }  // strip trailing commas
+    catch(e2){
+      // detect truncation (open braces/brackets not closed) for a clearer message
+      const opens = (slice.match(/[\{\[]/g)||[]).length, closes = (slice.match(/[\}\]]/g)||[]).length;
+      if(opens>closes) throw new Error("response was cut off (too much text — try a shorter passage or photo)");
+      throw new Error("couldn't parse response");
+    }
+  }
+}
 // back-compat alias so existing call sites keep working
 const callClaude = callAI;
 
@@ -394,8 +416,12 @@ async function photoGo(ev){
     const ocrPrompt = "Extract ALL the Greek text visible in this image, exactly as written, preserving line breaks. Return ONLY the extracted text with no commentary, translation, or markdown. If there is no Greek text, return an empty response.";
     const text = await callVision(ocrPrompt, b64, media, 2000);
     if(!text || text.trim().length < 2){ genMsg = "No Greek text found in that photo. Try a clearer, closer shot."; genBusy=false; render(); return; }
-    genMsg = "Glossing the text…"; render();
-    await glossPastedText(text.trim());   // reuse the gloss+cache pipeline
+    let ocr = text.trim();
+    // Cap so the gloss JSON can't overflow the token limit (a full page can be too much at once)
+    const CAP = 1500;
+    if(ocr.length > CAP){ ocr = ocr.slice(0, CAP); genMsg = "Long text — glossing the first part…"; render(); }
+    genBusy = false;              // let glossPastedText manage its own busy state
+    await glossPastedText(ocr);   // reuse the gloss+cache pipeline
   }catch(e){ genMsg = "Photo read failed: " + e.message; genBusy = false; render(); }
 }
 async function glossPastedText(text){
@@ -407,8 +433,8 @@ TEXT:\n"""${text.slice(0,4000)}"""
 Respond ONLY with valid JSON, no markdown:
 {"title":"short Greek title","text":"the cleaned passage","gloss":[["surface","lemma","translation","note or empty"],...]}`;
   try{
-    const raw = await callClaude(prompt, 4000);
-    const p = JSON.parse(raw);
+    const raw = await callClaude(prompt, 8000);
+    const p = parseAIJSON(raw);
     const entry = { id:"paste-"+Date.now(), level:settings.level, topic:"pasted", title:p.title,
       text:p.text, gloss:p.gloss.map(g=>g.join("|")), cached:true };
     customLib = [entry, ...customLib];
@@ -436,7 +462,7 @@ Respond ONLY with valid JSON, no markdown:
 {"title":"short Greek title","text":"the passage","gloss":[["surface","lemma","translation","note or empty string"],...]}`;
   try{
     const raw = await callClaude(prompt, 3500);
-    const p = JSON.parse(raw);
+    const p = parseAIJSON(raw);
     const entry = {
       id: "gen-"+Date.now(), level: settings.level, topic, title: p.title, text: p.text,
       gloss: p.gloss.map(g => g.join("|")), cached: true
@@ -453,7 +479,7 @@ async function liveLookup(word, sentence, passage){
   const prompt = `A Greek learner tapped "${cleanWord(word)}" in: "${sentence}". Respond ONLY with JSON, no markdown: {"lemma":"dictionary form with article","translation":"concise English meaning in this context","note":"one short usage/root note"}`;
   try{
     const raw = await callClaude(prompt, 500);
-    const d = JSON.parse(raw);
+    const d = parseAIJSON(raw);
     lookupState = {surface: cleanWord(word).toLowerCase(), lemma:d.lemma, translation:d.translation, note:d.note||"", sentence};
     // cache into the passage gloss so it's offline next time
     if(passage && passage.cached){
