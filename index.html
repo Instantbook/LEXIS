@@ -67,7 +67,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = "v12a";
+const APP_VERSION = "v13";
 const SPEEDS = { fast: 0.92, medium: 0.69, slow: 0.52 };
 function curRate(){ return SPEEDS[settings.speed] || SPEEDS.fast; }
 function wordRate(){ return curRate() * 0.9; }
@@ -79,7 +79,7 @@ function wordRate(){ return curRate() * 0.9; }
 // ═══════════════════════════════════════════════════════════
 
 const DAY = 86400000;
-const LS = { deck:"lexis.deck", lib:"lexis.customLib", settings:"lexis.settings" };
+const LS = { deck:"lexis.deck", lib:"lexis.customLib", settings:"lexis.settings", listened:"lexis.listened" };
 
 // ── Core function-word dictionary ──
 const CORE = {"ο":"the (masc.)","η":"the (fem.)","το":"the (neut.)","οι":"the (pl.)","τα":"the (neut. pl.)","του":"of the / his","της":"of the / her","των":"of the (pl.)","τον":"the (masc. acc.)","την":"the (fem. acc.)","τη":"the (fem. acc.)","τις":"the (fem. pl. acc.)","τους":"the / them / their","στο":"in/at/to the","στη":"in/at/to the","στην":"in/at/to the","στον":"in/at/to the","στα":"in/at/to the (pl.)","στις":"in/at/to the (pl.)","στους":"in/at/to the (pl.)","σε":"in, at, to","με":"with","από":"from, by","για":"for, about","και":"and","κι":"and","να":"to (subjunctive)","θα":"will (future)","δεν":"not","δε":"not","μη":"don't, not","μην":"don't, not","που":"that, which, who","πως":"that","ότι":"that","ώστε":"so that","αλλά":"but","μα":"but","όμως":"however","ενώ":"while, whereas","καθώς":"as, while","όταν":"when","αν":"if","ούτε":"neither, nor","όπου":"where","όπως":"as, like","είναι":"is, are","ήταν":"was, were","έχει":"has","έχουν":"have","είχε":"had","μας":"us, our","σας":"you, your (pl.)","μου":"me, my","σου":"you, your","εμείς":"we","αυτό":"this, it","αυτός":"he, this","αυτή":"she, this","μια":"a, one (fem.)","ένα":"a, one (neut.)","ένας":"a, one (masc.)","κάθε":"each, every","πολύ":"very, much","πολλά":"many","πιο":"more","σαν":"like, as","ως":"as","τότε":"then","σήμερα":"today","πάνω":"up, on","κάτω":"down, under","μέσα":"inside","έξω":"outside","όλη":"all, whole","όλοι":"everyone","όλα":"everything","λίγο":"a little","πριν":"before","μετά":"after","ακόμα":"still, yet","εκεί":"there","εδώ":"here","τόσο":"so (much)","όσο":"as much as","παρά":"despite","ή":"or","μέχρι":"until","ποτέ":"never","πάντα":"always","κάτι":"something","επειδή":"because","ώρα":"hour, time","νέο":"new","νερά":"water (pl.)","νερό":"water","νησί":"island","χώρες":"countries","φρέσκο":"fresh","άρχισαν":"they began","βγήκαμε":"we went out","δικές":"one's own","σημαντικό":"significant","ελληνικής":"Greek (gen.)","φτάνει":"reaches; enough"};
@@ -117,6 +117,9 @@ let tab = "read", activeP = null, lookupState = null;
 let queue = [], revealed = false, sessionDone = 0;
 let reviewMode = "recognition"; // recognition | recall | cloze
 let apiHelpOpen = false;
+let cefrHelpOpen = false;
+let listened = new Set(load(LS.listened, []));
+let libFilter = { level:"all", source:"all", q:"" };   // level | source(all/mine/bundled) | search
 let genBusy = false, genMsg = "";
 
 function load(k, fb){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; }catch(e){ return fb; } }
@@ -218,7 +221,8 @@ function highlightSentence(si){
 function speakChain(){
   const tk = player.token;
   if(!player.playing) { highlightSentence(null); render(); return; }
-  if(player.idx >= player.sentences.length){ player.playing=false; player.idx=0; highlightSentence(null); render(); return; }
+  if(player.idx >= player.sentences.length){ player.playing=false; player.idx=0; highlightSentence(null);
+    if(player.pid){ listened.add(player.pid); save(LS.listened, [...listened]); } render(); return; }
   const myIdx = player.idx;
   highlightSentence(myIdx);                              // karaoke: mark the sentence being read
   speakText(player.sentences[myIdx], curRate(), () => {
@@ -268,6 +272,19 @@ const PROVIDERS = {
       if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e?.error?.message||("HTTP "+res.status)); }
       const d = await res.json();
       return d.content.filter(b=>b.type==="text").map(b=>b.text).join("\n");
+    },
+    async vision(prompt, b64, media, maxTokens, model, key){
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{ "content-type":"application/json", "x-api-key":key,
+          "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
+        body: JSON.stringify({ model, max_tokens:maxTokens||2000, messages:[{ role:"user", content:[
+          { type:"image", source:{ type:"base64", media_type:media, data:b64 } },
+          { type:"text", text:prompt } ] }] })
+      });
+      if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e?.error?.message||("HTTP "+res.status)); }
+      const d = await res.json();
+      return d.content.filter(b=>b.type==="text").map(b=>b.text).join("\n");
     }
   },
   gemini: {
@@ -282,6 +299,18 @@ const PROVIDERS = {
         method:"POST", headers:{ "content-type":"application/json" },
         body: JSON.stringify({ contents:[{ parts:[{ text:prompt }] }],
           generationConfig:{ maxOutputTokens:maxTokens||2000 } })
+      });
+      if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e?.error?.message||("HTTP "+res.status)); }
+      const d = await res.json();
+      return (d.candidates?.[0]?.content?.parts||[]).map(p=>p.text||"").join("\n");
+    },
+    async vision(prompt, b64, media, maxTokens, model, key){
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+      const res = await fetch(url, {
+        method:"POST", headers:{ "content-type":"application/json" },
+        body: JSON.stringify({ contents:[{ parts:[
+          { inline_data:{ mime_type:media, data:b64 } },
+          { text:prompt } ] }], generationConfig:{ maxOutputTokens:maxTokens||2000 } })
       });
       if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e?.error?.message||("HTTP "+res.status)); }
       const d = await res.json();
@@ -303,6 +332,18 @@ const PROVIDERS = {
       if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e?.error?.message||e?.error||("HTTP "+res.status)); }
       const d = await res.json();
       return d.choices?.[0]?.message?.content || "";
+    },
+    async vision(prompt, b64, media, maxTokens, model, key){
+      const base = (settings.baseUrl && settings.baseUrl.trim()) || "https://api.openai.com/v1";
+      const res = await fetch(base.replace(/\/$/,"") + "/chat/completions", {
+        method:"POST", headers:{ "content-type":"application/json", "authorization":"Bearer "+key },
+        body: JSON.stringify({ model, max_tokens:maxTokens||2000, messages:[{ role:"user", content:[
+          { type:"text", text:prompt },
+          { type:"image_url", image_url:{ url:`data:${media};base64,${b64}` } } ] }] })
+      });
+      if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e?.error?.message||e?.error||("HTTP "+res.status)); }
+      const d = await res.json();
+      return d.choices?.[0]?.message?.content || "";
     }
   }
 };
@@ -314,6 +355,12 @@ async function callAI(prompt, maxTokens){
   const key = settings.apiKey;
   const model = currentModel();
   const text = await prov.call(prompt, maxTokens, model, key);
+  return String(text||"").replace(/```json|```/g,"").trim();
+}
+async function callVision(prompt, b64, media, maxTokens){
+  const prov = currentProvider();
+  if(!prov.vision) throw new Error("This provider has no image support in the app.");
+  const text = await prov.vision(prompt, b64, media, maxTokens, currentModel(), settings.apiKey);
   return String(text||"").replace(/```json|```/g,"").trim();
 }
 // back-compat alias so existing call sites keep working
@@ -328,6 +375,29 @@ const LEVEL_SPECS = {
   C2: "a near-native learner. Use elegant, demanding Greek — literary or scholarly register, idioms, learned (λόγιες) words and nuanced constructions. 130–170 words total."
 };
 
+function fileToB64(file){
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(",")[1]);   // strip data: prefix
+    r.onerror = () => rej(new Error("Could not read image"));
+    r.readAsDataURL(file);
+  });
+}
+async function photoGo(ev){
+  const file = ev.target.files[0]; if(!file) return;
+  if(!settings.apiKey){ genMsg = "Add an AI provider key in Settings first (tap \"How this works\")."; render(); return; }
+  if(!navigator.onLine){ genMsg = "You're offline — reading a photo needs internet."; render(); return; }
+  genBusy = true; genMsg = "Reading the photo…"; render();
+  try{
+    const b64 = await fileToB64(file);
+    const media = file.type || "image/jpeg";
+    const ocrPrompt = "Extract ALL the Greek text visible in this image, exactly as written, preserving line breaks. Return ONLY the extracted text with no commentary, translation, or markdown. If there is no Greek text, return an empty response.";
+    const text = await callVision(ocrPrompt, b64, media, 2000);
+    if(!text || text.trim().length < 2){ genMsg = "No Greek text found in that photo. Try a clearer, closer shot."; genBusy=false; render(); return; }
+    genMsg = "Glossing the text…"; render();
+    await glossPastedText(text.trim());   // reuse the gloss+cache pipeline
+  }catch(e){ genMsg = "Photo read failed: " + e.message; genBusy = false; render(); }
+}
 async function glossPastedText(text){
   if(!settings.apiKey){ genMsg = "Add an AI provider key in Settings first (tap \"How this works\")."; render(); return; }
   if(!navigator.onLine){ genMsg = "You're offline — glossing needs internet."; render(); return; }
@@ -474,6 +544,22 @@ function lookupHTML(){
   </div>`;
 }
 
+function cefrHelpHTML(){
+  const rows = [
+    ["A1","Beginner","Simple words and set phrases — greetings, numbers, basic needs. Very short sentences."],
+    ["A2","Elementary","Everyday topics — family, shopping, routine. Short, direct sentences you'd use travelling."],
+    ["B1","Intermediate","Handle most situations while travelling; describe experiences, opinions, plans. Connected paragraphs."],
+    ["B2","Upper-intermediate","Follow news and articles; fairly fluent conversation. Longer texts with some idiom."],
+    ["C1","Advanced","Complex texts, implicit meaning, flexible fluent use. Nuance and abstract topics."],
+    ["C2","Mastery","Near-native. Effortless understanding of virtually everything, subtle shades of meaning."],
+  ];
+  return `<div class="card" style="border:2px solid #C89B3C;">
+    <div class="row"><div style="font-weight:700;color:#1E3A5C;font-size:17px;">The CEFR levels (A1–C2)</div>
+      <button class="btn sec" style="padding:6px 12px;font-size:13px;" onclick="closeCefrHelp()">Close ✕</button></div>
+    <div class="muted" style="margin-top:8px;font-size:13.5px;">The Common European Framework — a standard scale from beginner to mastery. Pick where you are; you can always change it.</div>
+    ${rows.map(([lv,name,desc])=>`<div style="margin-top:12px;"><b style="color:#1E3A5C;">${lv} — ${name}</b><div class="muted" style="font-size:13.5px;margin-top:2px;line-height:1.5;">${desc}</div></div>`).join("")}
+  </div>`;
+}
 function apiHelpHTML(){
   return `<div class="card" style="border:2px solid #C89B3C;">
     <div class="row"><div style="font-weight:700;color:#1E3A5C;font-size:17px;">Setting up online mode</div>
@@ -532,7 +618,8 @@ function render(){
   if(tab==="read" && !activeP){
     html += `<div style="padding-top:10px;">`;
     html += `<div class="card" style="padding:16px;">
-      <div style="font-weight:700;color:#1E3A5C;">Generate a new passage <span class="muted">(online, cached for offline)</span></div>
+      <div class="row"><div style="font-weight:700;color:#1E3A5C;">Generate a new passage <span class="muted">(online, cached)</span></div>
+        <button class="btn sec" style="padding:5px 10px;font-size:12px;" onclick="showCefrHelp()">What do A1–C2 mean?</button></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;" id="genLevels">
         ${["A1","A2","B1","B2","C1","C2"].map(l=>`<button class="chip${settings.level===l?" on":""}" onclick="setLevel('${l}')">${l}</button>`).join("")}
       </div>
@@ -550,12 +637,42 @@ function render(){
       <div class="muted" style="margin:4px 0 10px;">Claude formats it and glosses every word, then caches it for offline reading &amp; tapping.</div>
       <textarea id="pasteIn" placeholder="Paste Greek text here…" style="width:100%;min-height:90px;padding:10px;border-radius:10px;border:1.5px solid #D8D2C4;font-family:inherit;font-size:15px;box-sizing:border-box;"></textarea>
       <button class="btn" style="margin-top:8px;width:100%;" onclick="pasteGo()" ${genBusy?"disabled":""}>${genBusy?"…":"Gloss & save"}</button>
+      <div class="muted" style="margin:12px 0 6px;text-align:center;">— or —</div>
+      <label class="btn sec" style="width:100%;display:block;text-align:center;box-sizing:border-box;">📷 Snap a photo of Greek text
+        <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="photoGo(event)"></label>
+      <div class="muted" style="margin-top:6px;font-size:12.5px;">Fill the frame with the text, good light, hold steady. Reads it with your AI provider, then glosses it.</div>
     </div>`;
-    for(const p of allPassages()){
+    // ── Library filters ──
+    const all = allPassages();
+    const levels = ["all","A1","A2","B1","B2","C1","C2"];
+    html += `<div class="card" style="padding:14px 16px;">
+      <input type="text" placeholder="Search titles & topics…" value="${esc(libFilter.q)}"
+        oninput="setLibSearch(this.value)" style="width:100%;box-sizing:border-box;margin-bottom:10px;">
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;">
+        ${levels.map(lv=>`<button class="chip${libFilter.level===lv?" on":""}" style="font-size:12px;padding:5px 9px;" onclick="setLibFilter('level','${lv}')">${lv==="all"?"All levels":lv}</button>`).join("")}
+      </div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;">
+        ${[["all","All"],["mine","My texts"],["bundled","Built-in"]].map(([v,l])=>`<button class="chip${libFilter.source===v?" on":""}" style="font-size:12px;padding:5px 9px;" onclick="setLibFilter('source','${v}')">${l}</button>`).join("")}
+      </div>
+    </div>`;
+    // apply filters
+    const q = libFilter.q.trim().toLowerCase();
+    const filtered = all.filter(p => {
+      if(libFilter.level!=="all" && p.level!==libFilter.level) return false;
+      if(libFilter.source==="mine" && !p.cached) return false;
+      if(libFilter.source==="bundled" && p.cached) return false;
+      if(q && !((p.title||"").toLowerCase().includes(q) || (p.topic||"").toLowerCase().includes(q))) return false;
+      return true;
+    });
+    if(!filtered.length){
+      html += `<div class="card" style="padding:20px;text-align:center;"><div class="muted">No passages match. ${all.length?"Try clearing filters.":"Generate or paste one to start."}</div></div>`;
+    }
+    for(const p of filtered){
+      const heard = listened.has(p.id);
       html += `<div class="card row" style="padding:16px;cursor:pointer;" onclick="openP('${p.id}')">
-        <div><div class="display" style="font-size:19px;color:#1E3A5C;">${esc(p.title)}</div>
+        <div style="min-width:0;"><div class="display" style="font-size:19px;color:#1E3A5C;">${heard?'<span title="listened" style="color:#3E7C4F;">✓ </span>':""}${esc(p.title)}</div>
         <div class="muted" style="margin-top:2px;">${p.level} · ${esc(p.topic)} · ${p.gloss.length} glossed
-        <span class="badge ${p.cached?"cached":"bundled"}">${p.cached?"AI · cached":"bundled"}</span></div></div>
+        <span class="badge ${p.cached?"cached":"bundled"}">${p.cached?"My text":"Built-in"}</span>${heard?' <span class="badge" style="background:#E3EFE6;color:#3E7C4F;">listened</span>':""}</div></div>
         <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
         ${p.cached?`<button style="background:none;border:none;font-size:16px;cursor:pointer;color:#B4432F;padding:6px;" onclick="event.stopPropagation();delPassage('${p.id}')">✕</button>`:""}
         <span style="color:#C89B3C;font-size:20px;">→</span></div></div>`;
@@ -676,6 +793,7 @@ function render(){
     </div>`;
   }
 
+  if(cefrHelpOpen) html = cefrHelpHTML() + html;
   if(apiHelpOpen) html = apiHelpHTML() + html;
   $("main").innerHTML = html;
 
@@ -752,6 +870,10 @@ window.setProvider = (pk) => {
   settings.provider = pk; save(LS.settings, settings); render();
 };
 window.showApiHelp = () => { apiHelpOpen = true; render(); };
+window.showCefrHelp = () => { cefrHelpOpen = true; render(); };
+window.closeCefrHelp = () => { cefrHelpOpen = false; render(); };
+window.setLibFilter = (kind, val) => { libFilter[kind] = val; render(); };
+window.setLibSearch = (v) => { libFilter.q = v; render(); };
 window.closeApiHelp = () => { apiHelpOpen = false; render(); };
 window.exportDeck = () => {
   const blob = new Blob([JSON.stringify({deck, customLib}, null, 2)], {type:"application/json"});
@@ -759,6 +881,7 @@ window.exportDeck = () => {
   a.href = URL.createObjectURL(blob); a.download = "lexis-backup.json"; a.click();
 };
 window.pasteGo = () => { const t=document.getElementById("pasteIn").value.trim(); if(t) glossPastedText(t); };
+window.photoGo = photoGo;
 window.exportAnki = () => {
   if(!deck.length){ const m=document.getElementById("importMsg"); if(m) m.textContent="Deck is empty."; return; }
   const esc = v => '"' + String(v||"").replace(/"/g,'""') + '"';
