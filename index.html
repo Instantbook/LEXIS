@@ -67,7 +67,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = "v12";
+const APP_VERSION = "v12a";
 const SPEEDS = { fast: 0.92, medium: 0.69, slow: 0.52 };
 function curRate(){ return SPEEDS[settings.speed] || SPEEDS.fast; }
 function wordRate(){ return curRate() * 0.9; }
@@ -116,6 +116,7 @@ if(!settings.models) settings.models = {};   // per-provider model overrides
 let tab = "read", activeP = null, lookupState = null;
 let queue = [], revealed = false, sessionDone = 0;
 let reviewMode = "recognition"; // recognition | recall | cloze
+let apiHelpOpen = false;
 let genBusy = false, genMsg = "";
 
 function load(k, fb){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; }catch(e){ return fb; } }
