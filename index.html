@@ -67,7 +67,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = "v15";
+const APP_VERSION = "v16";
 const SPEEDS = { fast: 0.92, medium: 0.69, slow: 0.52 };
 function curRate(){ return SPEEDS[settings.speed] || SPEEDS.fast; }
 function wordRate(){ return curRate() * 0.9; }
@@ -106,26 +106,61 @@ text:"Ο μύθος του Ικάρου εξακολουθεί να συγκιν
 gloss:["μύθος|ο μύθος|myth","ικάρου|ο Ίκαρος|Icarus","εξακολουθεί|εξακολουθώ|to continue, persist","συγκινεί|συγκινώ|to move, touch (emotionally)","ακριβώς|ακριβώς|precisely, exactly","συμπυκνώνει|συμπυκνώνω|to condense, distill","αιώνια|αιώνιος|eternal","σύγκρουση|η σύγκρουση|conflict, clash","φιλοδοξία|η φιλοδοξία|ambition","μέτρο|το μέτρο|moderation, measure|A central concept of Greek ethics","δαίδαλος|ο Δαίδαλος|Daedalus","αρχετυπικός|αρχετυπικός|archetypal","τεχνίτης|ο τεχνίτης|craftsman, artisan","κατασκευάζει|κατασκευάζω|to construct, build","φτερά|το φτερό|wing; feather","κερί|το κερί|wax; candle","πούπουλα|το πούπουλο|down feather","δραπετεύσει|δραπετεύω|to escape","λαβύρινθο|ο λαβύρινθος|labyrinth","συμβουλεύει|συμβουλεύω|to advise","γιο|ο γιος|son","πετάξει|πετώ|to fly","χαμηλά|χαμηλά|low","υγρασία|η υγρασία|moisture, humidity","βαρύνει|βαραίνω|to weigh down","ψηλά|ψηλά|high","ήλιος|ο ήλιος|sun","λιώσει|λιώνω|to melt","νεαρός|ο νεαρός|the young man","μεθυσμένος|μεθυσμένος|drunk, intoxicated","αίσθηση|η αίσθηση|sensation, feeling","πτήσης|η πτήση|flight","αψηφά|αψηφώ|to defy, disregard","πατρική|πατρικός|paternal","νουθεσία|η νουθεσία|admonition, counsel|A formal, learned word","συντρίβεται|συντρίβομαι|to crash, be shattered","πέλαγος|το πέλαγος|open sea","αρχαίοι|ο αρχαίος|the ancients","ονόμαζαν|ονομάζω|to call, name","πάθημά|το πάθημα|misfortune (that teaches)|Cf. το πάθημα να γίνει μάθημα","ύβρη|η ύβρις|hubris|Overstepping limits, inviting nemesis","υπέρβαση|η υπέρβαση|overstepping, transgression","ορίων|το όριο|limit, boundary","επιφέρει|επιφέρω|to bring about","πτώση|η πτώση|fall"]}
 ];
 
-// ── State ──
-let deck = load(LS.deck, []);
-let customLib = load(LS.lib, []);           // cached AI-generated passages
-let settings = load(LS.settings, { apiKey:"", model:"claude-sonnet-5", level:"B2", provider:"anthropic" });
-if(settings.model==="claude-sonnet-4-6") settings.model = "claude-sonnet-5";
-if(!settings.provider) settings.provider = "anthropic";
-if(!settings.models) settings.models = {};   // per-provider model overrides
+// ── State ── (populated by initStorage() before first render)
+let deck = [], customLib = [], settings = {}, listened = new Set();
 let tab = "read", activeP = null, lookupState = null;
 let queue = [], revealed = false, sessionDone = 0;
 let reviewMode = "recognition"; // recognition | recall | cloze
 let apiHelpOpen = false;
 let cefrHelpOpen = false;
-let listened = new Set(load(LS.listened, []));
 let libFilter = { level:"all", source:"all", q:"" };   // level | source(all/mine/bundled) | search
+
+async function initStorage(){
+  try{
+    const idb = await import("https://cdn.jsdelivr.net/npm/idb-keyval@6/+esm");
+    idbGet = idb.get; idbSet = idb.set;
+  }catch(e){ console.error("idb import failed, using localStorage", e); }
+
+  const read = async (k, fb) => {
+    if(idbGet){ try{ const v = await idbGet(k); if(v !== undefined) return v; }catch(e){} }
+    // one-time migration from old localStorage (or fallback if idb unavailable)
+    try{ const ls = localStorage.getItem(k); if(ls != null){ const parsed = JSON.parse(ls);
+      if(idbSet) idbSet(k, parsed).catch(()=>{}); return parsed; } }catch(e){}
+    return fb;
+  };
+
+  deck      = await read(LS.deck, []);
+  customLib = await read(LS.lib, []);
+  settings  = await read(LS.settings, {});
+  listened  = new Set(await read(LS.listened, []));
+
+  // settings defaults / migrations
+  const sd = { apiKey:"", model:"claude-sonnet-5", level:"B2", provider:"anthropic" };
+  settings = Object.assign({}, sd, settings);
+  if(settings.model==="claude-sonnet-4-6") settings.model = "claude-sonnet-5";
+  if(!settings.provider) settings.provider = "anthropic";
+  if(!settings.models) settings.models = {};
+
+  // prime memCache so synchronous save() has current values
+  memCache[LS.deck]=deck; memCache[LS.lib]=customLib;
+  memCache[LS.settings]=settings; memCache[LS.listened]=[...listened];
+}
 let analyzeOpen = false;   // collapsible Analyze/Paste panel
 let generateOpen = false;  // collapsible Generate panel
 let genBusy = false, genMsg = "";
 
-function load(k, fb){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; }catch(e){ return fb; } }
-function save(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){ console.error("save failed", e); } }
+// Storage: IndexedDB (via idb-keyval) with a synchronous in-memory cache.
+// save() stays synchronous in signature (updates cache, fires async to IDB), so no call
+// sites change. Everything loads once at startup via initStorage(). Lifts the ~5MB
+// localStorage ceiling to hundreds of MB — important as multi-language libraries grow.
+let idbSet = null, idbGet = null;
+const memCache = {};
+function load(k, fb){ return (k in memCache) ? memCache[k] : fb; }
+function save(k, v){
+  memCache[k] = v;
+  if(idbSet){ idbSet(k, v).catch(e=>console.error("idb save", k, e)); }
+  else { try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }  // pre-init fallback
+}
 
 // ── Gloss maps ──
 function glossMap(p){ const m={}; for(const line of p.gloss){ const [s,l,t,n] = line.split("|"); m[s.toLowerCase()] = {lemma:l, translation:t, note:n||""}; } return m; }
@@ -1010,7 +1045,11 @@ window.addEventListener("offline", render);
 // register service worker for offline shell
 if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js").catch(()=>{}); }
 
-render();
+// Boot: load storage (async), then render.
+document.getElementById("main").innerHTML = '<div style="padding:24px;color:#6B7683;">Loading…</div>';
+initStorage().then(render).catch(e => {
+  document.getElementById("main").innerHTML = '<div class="card">Storage failed to load: '+e.message+'</div>';
+});
 </script>
 </body>
 </html>
