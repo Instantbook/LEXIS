@@ -29,6 +29,8 @@
   .card { background:#fff; border-radius:14px; padding:20px; margin-top:12px;
           box-shadow:0 1px 3px rgba(31,41,51,.08),0 8px 24px rgba(31,41,51,.05); }
   .word { cursor:pointer; border-bottom:1px dotted rgba(30,58,92,.35); border-radius:2px; }
+  .sentence { border-radius:5px; transition:background .2s ease; padding:1px 0; }
+  .sentence.active { background:rgba(200,155,60,.20); box-shadow:0 0 0 3px rgba(200,155,60,.20); }
   .word.known { border-bottom:2px solid #C89B3C; background:rgba(200,155,60,.12); }
   .passage { font-size:19px; line-height:2.05; margin:14px 0 4px; }
   .muted { font-size:12.5px; color:#6B7683; }
@@ -65,7 +67,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = "v9";
+const APP_VERSION = "v11";
 const SPEEDS = { fast: 0.92, medium: 0.69, slow: 0.52 };
 function curRate(){ return SPEEDS[settings.speed] || SPEEDS.fast; }
 function wordRate(){ return curRate() * 0.9; }
@@ -107,9 +109,11 @@ gloss:["μύθος|ο μύθος|myth","ικάρου|ο Ίκαρος|Icarus","ε
 // ── State ──
 let deck = load(LS.deck, []);
 let customLib = load(LS.lib, []);           // cached AI-generated passages
-let settings = load(LS.settings, { apiKey:"", model:"claude-sonnet-4-6", level:"B2" });
+let settings = load(LS.settings, { apiKey:"", model:"claude-sonnet-5", level:"B2" });
+if(settings.model==="claude-sonnet-4-6") settings.model = "claude-sonnet-5";
 let tab = "read", activeP = null, lookupState = null;
 let queue = [], revealed = false, sessionDone = 0;
+let reviewMode = "recognition"; // recognition | recall | cloze
 let genBusy = false, genMsg = "";
 
 function load(k, fb){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; }catch(e){ return fb; } }
@@ -120,12 +124,52 @@ function glossMap(p){ const m={}; for(const line of p.gloss){ const [s,l,t,n] = 
 function allPassages(){ return [...customLib, ...BUNDLED]; }
 function cleanWord(w){ return w.replace(/[.,;·!?»«"'()\[\]:—–…\d]/g,"").trim(); }
 
+// Lightweight Modern Greek suffix stemmer — catches inflected forms offline.
+// Returns candidate lemmas to try against the glossary.
+function greekStemCandidates(word){
+  const w = word.toLowerCase();
+  const cands = new Set([w]);
+  // suffix → replacement (endings ordered longest-first within each group)
+  const rules = [
+    // verbs (1st conj) → -ω
+    [/άμε$/,"ω"],[/ούμε$/,"ώ"],[/ουμε$/,"ω"],[/άτε$/,"ω"],[/ετε$/,"ω"],
+    [/ουν$/,"ω"],[/ούν$/,"ώ"],[/εις$/,"ω"],[/ει$/,"ω"],[/ανε$/,"ω"],
+    // past tense → -ω/-ώ
+    [/ήσαμε$/,"ώ"],[/ήσατε$/,"ώ"],[/ησαν$/,"ώ"],[/ησα$/,"ώ"],[/ησε$/,"ώ"],
+    // nouns masc -ος
+    [/ους$/,"ος"],[/ου$/,"ος"],[/οι$/,"ος"],[/ων$/,"ος"],[/ο$/,"ος"],
+    // nouns fem -α / -η
+    [/ας$/,"α"],[/ες$/,"α"],[/ας$/,"η"],[/ης$/,"η"],
+    // neuter -ι
+    [/ιού$/,"ι"],[/ιά$/,"ι"],[/ιών$/,"ι"],[/ια$/,"ι"],
+    // adjectives
+    [/η$/,"ος"],[/α$/,"ος"],
+  ];
+  for(const [re, end] of rules){
+    if(re.test(w)) cands.add(w.replace(re, end));
+  }
+  // accent-normalized variants (Greek inflection often shifts the accent)
+  const deaccent = x => x.normalize("NFD").replace(/[\u0300-\u0342]/g,"").normalize("NFC");
+  for(const c of [...cands]) cands.add(deaccent(c));
+  // loose stem fallback
+  if(w.length>4){ cands.add(w.slice(0,-1)); cands.add(w.slice(0,-2)); }
+  return [...cands];
+}
 function lookupWord(word, passage){
   const key = cleanWord(word).toLowerCase();
   if(!key) return null;
   if(passage){ const m = glossMap(passage); if(m[key]) return {...m[key], surface:key}; }
   for(const p of allPassages()){ const m = glossMap(p); if(m[key]) return {...m[key], surface:key}; }
   if(CORE[key]) return {lemma:key, translation:CORE[key], note:"Common function word", surface:key, core:true};
+  // offline stemmer: try reduced forms against glossary + deck before giving up
+  const cands = greekStemCandidates(key);
+  for(const cand of cands){
+    if(cand===key) continue;
+    if(passage){ const m = glossMap(passage); if(m[cand]) return {...m[cand], surface:key, stemmed:true}; }
+    for(const p of allPassages()){ const m = glossMap(p); if(m[cand]) return {...m[cand], surface:key, stemmed:true}; }
+    const dc = deck.find(c=>c.lemma.toLowerCase()===cand || (c.forms||[]).map(f=>f.toLowerCase()).includes(cand));
+    if(dc) return { lemma:dc.lemma, translation:dc.translation, note:dc.note||"", surface:key, stemmed:true };
+  }
   return {surface:key, missing:true};
 }
 
@@ -161,11 +205,19 @@ function speakText(text, rate, onend, keepQueue){
 
 function splitSentences(t){ return t.split(/(?:(?<=[.;!?·…])\s+|\n+)/).filter(s=>s && s.trim()); }
 
+function highlightSentence(si){
+  document.querySelectorAll(".sentence.active").forEach(e=>e.classList.remove("active"));
+  if(si==null) return;
+  const el = document.querySelector(`.sentence[data-si="${si}"]`);
+  if(el){ el.classList.add("active");
+    el.scrollIntoView({ behavior:"smooth", block:"center" }); }
+}
 function speakChain(){
   const tk = player.token;
-  if(!player.playing) { render(); return; }
-  if(player.idx >= player.sentences.length){ player.playing=false; player.idx=0; render(); return; }
+  if(!player.playing) { highlightSentence(null); render(); return; }
+  if(player.idx >= player.sentences.length){ player.playing=false; player.idx=0; highlightSentence(null); render(); return; }
   const myIdx = player.idx;
+  highlightSentence(myIdx);                              // karaoke: mark the sentence being read
   speakText(player.sentences[myIdx], curRate(), () => {
     if(player.token !== tk || !player.playing) return;   // cancelled or paused
     if(player.idx !== myIdx) return;                     // duplicate event — already advanced
@@ -189,7 +241,7 @@ function resumePlayback(){
   speakChain(); render();
 }
 function stopPlayback(){
-  player.playing = false; player.idx = 0; player.pid = null; player.token++;
+  player.playing = false; player.idx = 0; player.pid = null; player.token++; highlightSentence(null);
   speechSynthesis.cancel(); render();
 }
 if("speechSynthesis" in window) speechSynthesis.getVoices(); // warm up voice list
@@ -221,6 +273,25 @@ const LEVEL_SPECS = {
   C2: "a near-native learner. Use elegant, demanding Greek — literary or scholarly register, idioms, learned (λόγιες) words and nuanced constructions. 130–170 words total."
 };
 
+async function glossPastedText(text){
+  if(!settings.apiKey){ genMsg = "Add your Anthropic API key in Settings first."; render(); return; }
+  if(!navigator.onLine){ genMsg = "You're offline — glossing needs internet."; render(); return; }
+  genBusy = true; genMsg = "Glossing your text…"; render();
+  const prompt = `A Greek learner pasted this text. Clean it up lightly (fix obvious spacing/OCR issues, keep the original wording and line breaks), give it a short Greek title, and gloss EVERY content word (skip articles, common particles, prepositions). For each: exact surface form as it appears (lowercase), dictionary lemma with article, concise English translation in context, optional short note.
+TEXT:\n"""${text.slice(0,4000)}"""
+Respond ONLY with valid JSON, no markdown:
+{"title":"short Greek title","text":"the cleaned passage","gloss":[["surface","lemma","translation","note or empty"],...]}`;
+  try{
+    const raw = await callClaude(prompt, 4000);
+    const p = JSON.parse(raw);
+    const entry = { id:"paste-"+Date.now(), level:settings.level, topic:"pasted", title:p.title,
+      text:p.text, gloss:p.gloss.map(g=>g.join("|")), cached:true };
+    customLib = [entry, ...customLib];
+    save(LS.lib, customLib);
+    genMsg = ""; activeP = entry; lookupState = null;
+  }catch(e){ genMsg = "Glossing failed: " + e.message; }
+  genBusy = false; render();
+}
 async function generateAndCache(topic){
   if(!settings.apiKey){ genMsg = "Add your Anthropic API key in Settings first."; render(); return; }
   if(!navigator.onLine){ genMsg = "You're offline — generation needs internet."; render(); return; }
@@ -284,6 +355,18 @@ function saveLookup(){
   lookupState.saved = true; render();
 }
 
+function clozeSentence(context, card){
+  // blank out the card's surface form (or lemma) in its context sentence
+  const forms = [...(card.forms||[]), card.lemma].filter(Boolean)
+    .sort((a,b)=>b.length-a.length); // longest first
+  let out = esc(context);
+  for(const f of forms){
+    const re = new RegExp("("+f.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+")", "i");
+    if(re.test(out)){ out = out.replace(re, '<span style="color:#C89B3C;font-weight:700;">_____</span>'); break; }
+  }
+  return out;
+}
+window.setReviewMode = m => { reviewMode = m; revealed = false; render(); };
 function startReview(){
   queue = dueCards().sort((a,b)=>a.due-b.due).slice(0,30);
   revealed = false; sessionDone = 0;
@@ -302,20 +385,18 @@ function esc(s){ return String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;"
 
 function passageHTML(p){
   const known = savedForms();
-  let si = 0;
-  const lines = p.text.split(/\n+/).filter(l => l.trim());
-  return lines.map(line =>
-    splitSentences(line).map(sentence => {
-      const htmlSent = sentence.split(/(\s+)/).map(tok => {
-        if(/^\s+$/.test(tok) || !cleanWord(tok)) return esc(tok);
-        const w = cleanWord(tok).toLowerCase();
-        const k = known.has(w) ? " known" : "";
-        return `<span class="word${k}" data-si="${si}" data-w="${esc(tok)}">${esc(tok)}</span>`;
-      }).join("") + " ";
-      si++;
-      return htmlSent;
-    }).join("")
-  ).join("<br>");
+  // Build spans from the SAME array the tap-lookup uses (unified sentence indexing),
+  // and wrap each sentence so audio playback can highlight it (karaoke).
+  const sentences = splitSentences(p.text);
+  return sentences.map((sentence, si) => {
+    const htmlSent = sentence.split(/(\s+)/).map(tok => {
+      if(/^\s+$/.test(tok) || !cleanWord(tok)) return esc(tok);
+      const w = cleanWord(tok).toLowerCase();
+      const k = known.has(w) ? " known" : "";
+      return `<span class="word${k}" data-si="${si}" data-w="${esc(tok)}">${esc(tok)}</span>`;
+    }).join("");
+    return `<span class="sentence" data-si="${si}">${htmlSent}</span> `;
+  }).join("");
 }
 
 function lookupHTML(){
@@ -377,6 +458,12 @@ function render(){
         <button class="btn" onclick="genGo()" ${genBusy?"disabled":""}>${genBusy?"…":"Go"}</button>
       </div>
       ${genMsg?`<div class="muted" style="margin-top:8px;color:#8A6D1F;">${esc(genMsg)}</div>`:""}
+    </div>
+    <div class="card" style="padding:16px;">
+      <div style="font-weight:700;color:#1E3A5C;">Paste Greek text <span class="muted">(article, lyrics, anything)</span></div>
+      <div class="muted" style="margin:4px 0 10px;">Claude formats it and glosses every word, then caches it for offline reading &amp; tapping.</div>
+      <textarea id="pasteIn" placeholder="Paste Greek text here…" style="width:100%;min-height:90px;padding:10px;border-radius:10px;border:1.5px solid #D8D2C4;font-family:inherit;font-size:15px;box-sizing:border-box;"></textarea>
+      <button class="btn" style="margin-top:8px;width:100%;" onclick="pasteGo()" ${genBusy?"disabled":""}>${genBusy?"…":"Gloss & save"}</button>
     </div>`;
     for(const p of allPassages()){
       html += `<div class="card row" style="padding:16px;cursor:pointer;" onclick="openP('${p.id}')">
@@ -413,15 +500,31 @@ function render(){
         <button class="btn" style="margin-top:18px;" onclick="setTab('read')">Go read</button></div>`;
     } else {
       const c = queue[0];
-      html += `<div class="muted" style="padding-top:14px;">${queue.length} left in this session</div>
-      <div class="card" style="min-height:240px;display:flex;flex-direction:column;">
+      html += `<div class="row" style="padding-top:14px;">
+        <div class="muted">${queue.length} left</div>
+        <div style="display:flex;gap:5px;">
+          ${[["recognition","GR→EN"],["recall","EN→GR"],["cloze","Fill-in"]].map(([m,l])=>`<button class="chip${reviewMode===m?" on":""}" style="font-size:12px;padding:5px 9px;" onclick="setReviewMode('${m}')">${l}</button>`).join("")}
+        </div></div>`;
+      // build front/back by mode
+      let front, back, canSpeak = true;
+      if(reviewMode==="recall"){
+        front = `<div class="display" style="font-size:24px;color:#1E3A5C;">${esc(c.translation)}</div>`;
+        back  = `<div style="font-size:26px;font-weight:700;color:#1E3A5C;">${esc(c.lemma)}</div>${c.note?`<div style="font-size:14.5px;color:#4B5563;margin-top:8px;">${esc(c.note)}</div>`:""}`;
+      } else if(reviewMode==="cloze" && c.context){
+        const blanked = clozeSentence(c.context, c);
+        front = `<div style="font-size:19px;color:#1E3A5C;line-height:1.6;">${blanked}</div><div class="muted" style="margin-top:10px;">${esc(c.translation)}</div>`;
+        back  = `<div style="font-size:26px;font-weight:700;color:#1E3A5C;">${esc(c.lemma)}</div>`;
+      } else {
+        // recognition (default), and cloze fallback when no context
+        front = `<div class="display" style="font-size:32px;color:#1E3A5C;">${esc(c.lemma)}</div>${(c.context)?`<div style="font-size:14.5px;color:#6B7683;margin-top:12px;font-style:italic;">«${esc(c.context)}»</div>`:""}`;
+        back  = `<div style="font-size:19px;font-weight:700;">${esc(c.translation)}</div>${c.note?`<div style="font-size:14.5px;color:#4B5563;margin-top:8px;">${esc(c.note)}</div>`:""}`;
+      }
+      const speakTarget = esc(c.lemma).replace(/'/g,"\\'");
+      html += `<div class="card" style="min-height:240px;display:flex;flex-direction:column;">
         <div style="flex:1;">
-          <div class="row"><div class="display" style="font-size:32px;color:#1E3A5C;">${esc(c.lemma)}</div>
-          <button style="background:none;border:none;font-size:20px;cursor:pointer;" onclick="speak('${esc(c.lemma).replace(/'/g,"\\'")}',0.85)">🔊</button></div>
-          ${(!revealed && c.context)?`<div style="font-size:14.5px;color:#6B7683;margin-top:12px;font-style:italic;">Seen in: «${esc(c.context)}»</div>`:""}
-          ${revealed?`<div style="margin-top:12px;border-top:1px solid #E5E1D8;padding-top:12px;">
-            <div style="font-size:19px;font-weight:700;">${esc(c.translation)}</div>
-            ${c.note?`<div style="font-size:14.5px;color:#4B5563;margin-top:8px;">${esc(c.note)}</div>`:""}</div>`:""}
+          <div class="row"><div>${front}</div>
+          ${canSpeak?`<button style="background:none;border:none;font-size:20px;cursor:pointer;" onclick="speak('${speakTarget}',0.85)">🔊</button>`:""}</div>
+          ${revealed?`<div style="margin-top:12px;border-top:1px solid #E5E1D8;padding-top:12px;">${back}</div>`:""}
         </div>
         ${!revealed
           ? `<button class="btn" style="margin-top:16px;" onclick="revealed=true;render()">Show answer</button>`
@@ -469,6 +572,9 @@ function render(){
       <div style="font-weight:700;color:#1E3A5C;">Backup</div>
       <div class="muted" style="margin:6px 0 12px;">Your deck lives in this browser's storage. Export it occasionally as a safety net.</div>
       <button class="btn sec" style="width:100%;" onclick="exportDeck()">Export deck as JSON</button>
+      <label class="btn sec" style="width:100%;display:block;text-align:center;margin-top:8px;box-sizing:border-box;">Import deck from JSON<input type="file" accept="application/json,.json" style="display:none;" onchange="importDeck(event)"></label>
+      <button class="btn sec" style="width:100%;margin-top:8px;" onclick="exportAnki()">Export for Anki (.tsv)</button>
+      <div id="importMsg" class="muted" style="margin-top:8px;"></div>
     </div>`;
   }
 
@@ -542,6 +648,38 @@ window.exportDeck = () => {
   const blob = new Blob([JSON.stringify({deck, customLib}, null, 2)], {type:"application/json"});
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob); a.download = "lexis-backup.json"; a.click();
+};
+window.pasteGo = () => { const t=document.getElementById("pasteIn").value.trim(); if(t) glossPastedText(t); };
+window.exportAnki = () => {
+  if(!deck.length){ const m=document.getElementById("importMsg"); if(m) m.textContent="Deck is empty."; return; }
+  const esc = v => '"' + String(v||"").replace(/"/g,'""') + '"';
+  const tsv = deck.map(c => [esc(c.lemma), esc(c.translation), esc(c.context||""), esc(c.note||"")].join("\t")).join("\n");
+  const blob = new Blob([tsv], { type:"text/tab-separated-values" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "lexis-anki.tsv"; a.click();
+};
+window.importDeck = (ev) => {
+  const file = ev.target.files[0]; if(!file) return;
+  const msg = document.getElementById("importMsg");
+  const r = new FileReader();
+  r.onload = () => {
+    try{
+      const d = JSON.parse(r.result);
+      let addedCards = 0, addedLib = 0;
+      if(Array.isArray(d.deck)){
+        const have = new Set(deck.map(c=>c.lemma));
+        for(const c of d.deck){ if(c && c.lemma && !have.has(c.lemma)){ deck.push(c); have.add(c.lemma); addedCards++; } }
+      }
+      if(Array.isArray(d.customLib)){
+        const have = new Set(customLib.map(p=>p.id));
+        for(const p of d.customLib){ if(p && p.id && !have.has(p.id)){ customLib.push(p); have.add(p.id); addedLib++; } }
+      }
+      save(LS.deck, deck); save(LS.lib, customLib);
+      if(msg) msg.textContent = `Imported ${addedCards} card(s) and ${addedLib} passage(s). Merged with existing — nothing overwritten.`;
+      render();
+    }catch(e){ if(msg) msg.textContent = "Import failed: "+e.message; }
+  };
+  r.readAsText(file);
 };
 window.addEventListener("online", render);
 window.addEventListener("offline", render);
