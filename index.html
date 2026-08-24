@@ -67,7 +67,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = "v13c";
+const APP_VERSION = "v15";
 const SPEEDS = { fast: 0.92, medium: 0.69, slow: 0.52 };
 function curRate(){ return SPEEDS[settings.speed] || SPEEDS.fast; }
 function wordRate(){ return curRate() * 0.9; }
@@ -82,10 +82,10 @@ const DAY = 86400000;
 const LS = { deck:"lexis.deck", lib:"lexis.customLib", settings:"lexis.settings", listened:"lexis.listened" };
 
 // ── Core function-word dictionary ──
-const CORE = {"ο":"the (masc.)","η":"the (fem.)","το":"the (neut.)","οι":"the (pl.)","τα":"the (neut. pl.)","του":"of the / his","της":"of the / her","των":"of the (pl.)","τον":"the (masc. acc.)","την":"the (fem. acc.)","τη":"the (fem. acc.)","τις":"the (fem. pl. acc.)","τους":"the / them / their","στο":"in/at/to the","στη":"in/at/to the","στην":"in/at/to the","στον":"in/at/to the","στα":"in/at/to the (pl.)","στις":"in/at/to the (pl.)","στους":"in/at/to the (pl.)","σε":"in, at, to","με":"with","από":"from, by","για":"for, about","και":"and","κι":"and","να":"to (subjunctive)","θα":"will (future)","δεν":"not","δε":"not","μη":"don't, not","μην":"don't, not","που":"that, which, who","πως":"that","ότι":"that","ώστε":"so that","αλλά":"but","μα":"but","όμως":"however","ενώ":"while, whereas","καθώς":"as, while","όταν":"when","αν":"if","ούτε":"neither, nor","όπου":"where","όπως":"as, like","είναι":"is, are","ήταν":"was, were","έχει":"has","έχουν":"have","είχε":"had","μας":"us, our","σας":"you, your (pl.)","μου":"me, my","σου":"you, your","εμείς":"we","αυτό":"this, it","αυτός":"he, this","αυτή":"she, this","μια":"a, one (fem.)","ένα":"a, one (neut.)","ένας":"a, one (masc.)","κάθε":"each, every","πολύ":"very, much","πολλά":"many","πιο":"more","σαν":"like, as","ως":"as","τότε":"then","σήμερα":"today","πάνω":"up, on","κάτω":"down, under","μέσα":"inside","έξω":"outside","όλη":"all, whole","όλοι":"everyone","όλα":"everything","λίγο":"a little","πριν":"before","μετά":"after","ακόμα":"still, yet","εκεί":"there","εδώ":"here","τόσο":"so (much)","όσο":"as much as","παρά":"despite","ή":"or","μέχρι":"until","ποτέ":"never","πάντα":"always","κάτι":"something","επειδή":"because","ώρα":"hour, time","νέο":"new","νερά":"water (pl.)","νερό":"water","νησί":"island","χώρες":"countries","φρέσκο":"fresh","άρχισαν":"they began","βγήκαμε":"we went out","δικές":"one's own","σημαντικό":"significant","ελληνικής":"Greek (gen.)","φτάνει":"reaches; enough"};
+const EL_CORE = {"ο":"the (masc.)","η":"the (fem.)","το":"the (neut.)","οι":"the (pl.)","τα":"the (neut. pl.)","του":"of the / his","της":"of the / her","των":"of the (pl.)","τον":"the (masc. acc.)","την":"the (fem. acc.)","τη":"the (fem. acc.)","τις":"the (fem. pl. acc.)","τους":"the / them / their","στο":"in/at/to the","στη":"in/at/to the","στην":"in/at/to the","στον":"in/at/to the","στα":"in/at/to the (pl.)","στις":"in/at/to the (pl.)","στους":"in/at/to the (pl.)","σε":"in, at, to","με":"with","από":"from, by","για":"for, about","και":"and","κι":"and","να":"to (subjunctive)","θα":"will (future)","δεν":"not","δε":"not","μη":"don't, not","μην":"don't, not","που":"that, which, who","πως":"that","ότι":"that","ώστε":"so that","αλλά":"but","μα":"but","όμως":"however","ενώ":"while, whereas","καθώς":"as, while","όταν":"when","αν":"if","ούτε":"neither, nor","όπου":"where","όπως":"as, like","είναι":"is, are","ήταν":"was, were","έχει":"has","έχουν":"have","είχε":"had","μας":"us, our","σας":"you, your (pl.)","μου":"me, my","σου":"you, your","εμείς":"we","αυτό":"this, it","αυτός":"he, this","αυτή":"she, this","μια":"a, one (fem.)","ένα":"a, one (neut.)","ένας":"a, one (masc.)","κάθε":"each, every","πολύ":"very, much","πολλά":"many","πιο":"more","σαν":"like, as","ως":"as","τότε":"then","σήμερα":"today","πάνω":"up, on","κάτω":"down, under","μέσα":"inside","έξω":"outside","όλη":"all, whole","όλοι":"everyone","όλα":"everything","λίγο":"a little","πριν":"before","μετά":"after","ακόμα":"still, yet","εκεί":"there","εδώ":"here","τόσο":"so (much)","όσο":"as much as","παρά":"despite","ή":"or","μέχρι":"until","ποτέ":"never","πάντα":"always","κάτι":"something","επειδή":"because","ώρα":"hour, time","νέο":"new","νερά":"water (pl.)","νερό":"water","νησί":"island","χώρες":"countries","φρέσκο":"fresh","άρχισαν":"they began","βγήκαμε":"we went out","δικές":"one's own","σημαντικό":"significant","ελληνικής":"Greek (gen.)","φτάνει":"reaches; enough"};
 
 // ── Bundled passages (gloss: surface|lemma|translation|note) ──
-const BUNDLED = [
+const EL_BUNDLED = [
 {id:"panigiri",level:"B1",topic:"Village life",title:"Το πανηγύρι του χωριού",
 text:"Κάθε καλοκαίρι, στις δεκαπέντε Αυγούστου, το χωριό μας γιορτάζει το μεγάλο πανηγύρι της Παναγίας. Από το πρωί οι καμπάνες χτυπούν χαρούμενα και οι γυναίκες στολίζουν την εκκλησία με λουλούδια. Το βράδυ, στην πλατεία, στήνονται τραπέζια κάτω από τα πλατάνια. Οι οργανοπαίχτες κουρδίζουν τα όργανά τους και σιγά σιγά αρχίζει ο χορός. Ψήνονται σουβλάκια και αρνιά στη σούβλα, ενώ το κρασί ρέει άφθονο. Οι ξενιτεμένοι επιστρέφουν από το εξωτερικό για να βρεθούν με τους δικούς τους. Μικροί και μεγάλοι πιάνονται χέρι χέρι και χορεύουν μέχρι τα ξημερώματα. Το πανηγύρι δεν είναι απλώς μια γιορτή· είναι η ψυχή του χωριού.",
 gloss:["καλοκαίρι|το καλοκαίρι|summer","δεκαπέντε|δεκαπέντε|fifteen","αυγούστου|ο Αύγουστος|August (genitive)","χωριό|το χωριό|village","γιορτάζει|γιορτάζω|to celebrate","μεγάλο|μεγάλος|big, great","πανηγύρι|το πανηγύρι|village festival, feast|Usually held on a saint's day","παναγίας|η Παναγία|the Virgin Mary|Δεκαπενταύγουστος: the great Aug 15 feast","πρωί|το πρωί|morning","καμπάνες|η καμπάνα|bell","χτυπούν|χτυπώ|to ring, to strike","χαρούμενα|χαρούμενα|joyfully","γυναίκες|η γυναίκα|woman","στολίζουν|στολίζω|to decorate, adorn","εκκλησία|η εκκλησία|church","λουλούδια|το λουλούδι|flower","βράδυ|το βράδυ|evening","πλατεία|η πλατεία|(village) square","στήνονται|στήνομαι|to be set up","τραπέζια|το τραπέζι|table","πλατάνια|το πλατάνι|plane tree","οργανοπαίχτες|ο οργανοπαίχτης|folk musician","κουρδίζουν|κουρδίζω|to tune (an instrument)","όργανά|το όργανο|instrument","σιγά|σιγά σιγά|slowly, little by little","αρχίζει|αρχίζω|to begin","χορός|ο χορός|dance","ψήνονται|ψήνομαι|to be grilled, roasted","σουβλάκια|το σουβλάκι|skewered grilled meat","αρνιά|το αρνί|lamb","σούβλα|η σούβλα|roasting spit","κρασί|το κρασί|wine","ρέει|ρέω|to flow","άφθονο|άφθονος|abundant, plentiful","ξενιτεμένοι|ο ξενιτεμένος|emigrant living abroad|From ξενιτιά — life in foreign lands","επιστρέφουν|επιστρέφω|to return","εξωτερικό|το εξωτερικό|abroad, overseas","βρεθούν|βρίσκομαι|to meet, get together","δικούς|οι δικοί μου|one's own people, family","μικροί|μικρός|small, young","μεγάλοι|μεγάλος|big; grown-up","πιάνονται|πιάνομαι|to take hold, join","χέρι|το χέρι|hand","χορεύουν|χορεύω|to dance","ξημερώματα|τα ξημερώματα|daybreak, the small hours","απλώς|απλώς|simply, merely","γιορτή|η γιορτή|celebration, feast day","ψυχή|η ψυχή|soul"]},
@@ -129,7 +129,7 @@ function save(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){
 
 // ── Gloss maps ──
 function glossMap(p){ const m={}; for(const line of p.gloss){ const [s,l,t,n] = line.split("|"); m[s.toLowerCase()] = {lemma:l, translation:t, note:n||""}; } return m; }
-function allPassages(){ return [...customLib, ...BUNDLED]; }
+function allPassages(){ return [...customLib.filter(inActiveLang), ...bundledPassages()]; }
 function passageOrigin(p){
   if(p.origin) return p.origin;                          // new entries
   if(!p.cached) return "bundled";                        // bundled
@@ -139,7 +139,7 @@ function cleanWord(w){ return w.replace(/[.,;·!?»«"'()\[\]:—–…\d]/g,"")
 
 // Lightweight Modern Greek suffix stemmer — catches inflected forms offline.
 // Returns candidate lemmas to try against the glossary.
-function greekStemCandidates(word){
+function elStem(word){
   const w = word.toLowerCase();
   const cands = new Set([w]);
   // suffix → replacement (endings ordered longest-first within each group)
@@ -173,9 +173,9 @@ function lookupWord(word, passage){
   if(!key) return null;
   if(passage){ const m = glossMap(passage); if(m[key]) return {...m[key], surface:key}; }
   for(const p of allPassages()){ const m = glossMap(p); if(m[key]) return {...m[key], surface:key}; }
-  if(CORE[key]) return {lemma:key, translation:CORE[key], note:"Common function word", surface:key, core:true};
+  const CG = coreGloss(); if(CG[key]) return {lemma:key, translation:CG[key], note:"Common function word", surface:key, core:true};
   // offline stemmer: try reduced forms against glossary + deck before giving up
-  const cands = greekStemCandidates(key);
+  const cands = langStem(key);
   for(const cand of cands){
     if(cand===key) continue;
     if(passage){ const m = glossMap(passage); if(m[cand]) return {...m[cand], surface:key, stemmed:true}; }
@@ -207,9 +207,9 @@ function speakText(text, rate, onend, keepQueue){
   try{
     if(!keepQueue) speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    const v = speechSynthesis.getVoices().find(v=>v.lang && v.lang.toLowerCase().startsWith("el"));
+    const vp = voicePrefix(); const v = speechSynthesis.getVoices().find(v=>v.lang && v.lang.toLowerCase().startsWith(vp));
     if(v) u.voice = v;
-    u.lang = "el-GR"; u.rate = rate || 0.92;
+    u.lang = voiceLangCode(); u.rate = rate || 0.92;
     let fired = false;
     u.onend = u.onerror = () => { if(fired) return; fired = true; if(onend) onend(); };
     speechSynthesis.speak(u);
@@ -402,7 +402,7 @@ function salvageGloss(raw){
 // back-compat alias so existing call sites keep working
 const callClaude = callAI;
 
-const LEVEL_SPECS = {
+const EL_LEVEL_SPECS = {
   A1: "an absolute beginner. Use ONLY the most common everyday words, very short simple sentences (5–8 words), present tense mostly, lots of repetition of key words. 60–90 words total.",
   A2: "an elementary learner. Use simple sentences, high-frequency vocabulary, basic past and future tenses. 80–110 words total.",
   B1: "an intermediate learner. Use everyday conversational Greek with some new vocabulary, varied but straightforward sentence structure. 110–140 words total.",
@@ -410,6 +410,34 @@ const LEVEL_SPECS = {
   C1: "an advanced learner. Use sophisticated, editorial-register Greek with rich vocabulary, subordinate clauses, and formal constructions. 130–170 words total.",
   C2: "a near-native learner. Use elegant, demanding Greek — literary or scholarly register, idioms, learned (λόγιες) words and nuanced constructions. 130–170 words total."
 };
+
+// ═══ LANGUAGE PACKS ═══
+// Each pack bundles everything language-specific: display name, TTS voice code,
+// function-word glossary, bundled passages, level specs, and an offline stemmer.
+// The engine is language-agnostic; adding a language = adding a pack (mostly content).
+const PACKS = {
+  el: {
+    code: "el", name: "Greek", native: "Ελληνικά",
+    voicePrefix: "el", voiceLang: "el-GR",
+    hasArticles: true,                 // affects gloss prompt wording ("lemma with article")
+    core: EL_CORE, bundled: EL_BUNDLED, levelSpecs: EL_LEVEL_SPECS, stem: elStem
+  }
+  // Future: es, fr, it, de, la … each a pack of the same shape.
+};
+function activeLang(){ return (settings && settings.lang) || "el"; }
+function activePack(){ return PACKS[activeLang()] || PACKS.el; }
+// Language scoping: untagged legacy data is treated as Greek ("el").
+function itemLang(x){ return (x && x.lang) || "el"; }
+function inActiveLang(x){ return itemLang(x) === activeLang(); }
+// Engine-facing accessors (replace the old globals; always reflect the active pack)
+function coreGloss(){ return activePack().core; }
+function bundledPassages(){ return activePack().bundled; }
+function levelSpecs(){ return activePack().levelSpecs; }
+function langName(){ return activePack().name; }
+function langStem(w){ const p = activePack(); return p.stem ? p.stem(w) : [w.toLowerCase()]; }
+function voiceLangCode(){ return activePack().voiceLang; }
+function voicePrefix(){ return activePack().voicePrefix; }
+function langHasArticles(){ return activePack().hasArticles !== false; }
 
 function fileToB64(file){
   return new Promise((res, rej) => {
@@ -428,7 +456,7 @@ async function photoGo(ev){
   try{
     const b64 = await fileToB64(file);
     const media = file.type || "image/jpeg";
-    const ocrPrompt = "Extract ALL the Greek text visible in this image, exactly as written, preserving line breaks. Return ONLY the extracted text with no commentary, translation, or markdown. If there is no Greek text, return an empty response.";
+    const ocrPrompt = `Extract ALL the ${langName()} text visible in this image, exactly as written, preserving line breaks. Return ONLY the extracted text with no commentary, translation, or markdown. If there is no ${langName()} text, return an empty response.`;
     const text = await callVision(ocrPrompt, b64, media, 2000);
     if(!text || text.trim().length < 2){ genMsg = "No Greek text found in that photo. Try a clearer, closer shot."; genBusy=false; render(); return; }
     let ocr = text.trim();
@@ -443,7 +471,8 @@ async function glossPastedText(text){
   if(!settings.apiKey){ genMsg = "Add an AI provider key in Settings first (tap \"How this works\")."; render(); return; }
   if(!navigator.onLine){ genMsg = "You're offline — glossing needs internet."; render(); return; }
   genBusy = true; genMsg = "Glossing your text…"; render();
-  const prompt = `A Greek learner pasted this text. Clean it up lightly (fix obvious spacing/OCR issues, keep the original wording and line breaks), give it a short Greek title, and gloss EVERY content word (skip articles, common particles, prepositions). For each: exact surface form as it appears (lowercase), dictionary lemma with article, concise English translation in context, optional short note.
+  const L = langName();
+  const prompt = `A ${L} learner pasted this text. Clean it up lightly (fix obvious spacing/OCR issues, keep the original wording and line breaks), give it a short ${L} title, and gloss EVERY content word (skip articles, common particles, prepositions). For each: exact surface form as it appears (lowercase), dictionary lemma${langHasArticles()?" with article":""}, concise English translation in context, optional short note.
 TEXT:\n"""${text.slice(0,4000)}"""
 Respond ONLY with valid JSON, no markdown:
 {"title":"short Greek title","text":"the cleaned passage","gloss":[["surface","lemma","translation","note or empty"],...]}`;
@@ -455,7 +484,7 @@ Respond ONLY with valid JSON, no markdown:
     // if the model didn't echo the text back (or it was truncated), fall back to the input text
     const passageText = (p.text && p.text.length > 10) ? p.text : text;
     const entry = { id:"paste-"+Date.now(), level:settings.level, topic:"imported",
-      title:p.title || "Captured text", text:passageText,
+      title:p.title || "Captured text", text:passageText, lang:activeLang(),
       gloss:(p.gloss||[]).map(g=>Array.isArray(g)?g.join("|"):g), cached:true, origin:"imported" };
     customLib = [entry, ...customLib];
     save(LS.lib, customLib);
@@ -468,16 +497,17 @@ async function generateAndCache(topic){
   if(!settings.apiKey){ genMsg = "Add an AI provider key in Settings first (tap \"How this works\")."; render(); return; }
   if(!navigator.onLine){ genMsg = "You're offline — generation needs internet."; render(); return; }
   genBusy = true; genMsg = "Generating and glossing a new passage…"; render();
-  const due = deck.filter(c=>c.due<=Date.now()).slice(0,8).map(c=>c.lemma);
-  const spec = LEVEL_SPECS[settings.level] || LEVEL_SPECS.B2;
+  const due = deck.filter(c=>inActiveLang(c) && c.due<=Date.now()).slice(0,8).map(c=>c.lemma);
+  const LS_ = levelSpecs(); const spec = LS_[settings.level] || LS_.B2;
   const isDlg = (settings.format || "narrative") === "dialogue";
-  const prompt = `You are a Greek tutor creating reading material for ${spec}
+  const L = langName();
+  const prompt = `You are a ${L} tutor creating reading material for ${spec}
 
-Write a Modern Greek ${isDlg ? "dialogue" : "passage"} on: "${topic}".${isDlg ? `
+Write a ${L} ${isDlg ? "dialogue" : "passage"} on: "${topic}".${isDlg ? `
 
 Format it as a natural spoken conversation between two people. Each utterance goes on its own line, starting with an em-dash (—). Use genuinely colloquial SPOKEN Greek — the fillers, interjections and particles real speakers use (λοιπόν, έλα, ρε συ, ας πούμε, καλέ, βρε) suited to the level — not written-register Greek. Include the small conversational moves: greetings, reacting, agreeing, teasing, changing subject.` : ""}${(due.length && !["A1","A2"].includes(settings.level)) ? ` Where natural, include some of these study words: ${due.join(", ")}.` : ""}
 
-Then gloss EVERY content word in the passage (skip only articles, common particles and prepositions). For each, give: the exact surface form as it appears (lowercase), the dictionary lemma with article, a concise English translation as used in context, and optionally a short usage note.
+Then gloss EVERY content word in the passage (skip only articles, common particles and prepositions). For each, give: the exact surface form as it appears (lowercase), the dictionary lemma${langHasArticles()?" with its article":""}, a concise English translation as used in context, and optionally a short usage note.
 
 Respond ONLY with valid JSON, no markdown:
 {"title":"short Greek title","text":"the passage","gloss":[["surface","lemma","translation","note or empty string"],...]}`;
@@ -485,7 +515,7 @@ Respond ONLY with valid JSON, no markdown:
     const raw = await callClaude(prompt, 3500);
     const p = parseAIJSON(raw);
     const entry = {
-      id: "gen-"+Date.now(), level: settings.level, topic, title: p.title, text: p.text,
+      id: "gen-"+Date.now(), level: settings.level, topic, title: p.title, text: p.text, lang: activeLang(),
       gloss: p.gloss.map(g => g.join("|")), cached: true, origin:"generated"
     };
     customLib = [entry, ...customLib];
@@ -497,7 +527,7 @@ Respond ONLY with valid JSON, no markdown:
 
 async function liveLookup(word, sentence, passage){
   lookupState = {surface: cleanWord(word).toLowerCase(), loading:true}; render();
-  const prompt = `A Greek learner tapped "${cleanWord(word)}" in: "${sentence}". Respond ONLY with JSON, no markdown: {"lemma":"dictionary form with article","translation":"concise English meaning in this context","note":"one short usage/root note"}`;
+  const prompt = `A ${langName()} learner tapped "${cleanWord(word)}" in: "${sentence}". Respond ONLY with JSON, no markdown: {"lemma":"dictionary form${langHasArticles()?" with article":""}","translation":"concise English meaning in this context","note":"one short usage/root note"}`;
   try{
     const raw = await callClaude(prompt, 500);
     const d = parseAIJSON(raw);
@@ -513,15 +543,15 @@ async function liveLookup(word, sentence, passage){
 }
 
 // ── Deck ops ──
-function savedForms(){ return new Set(deck.flatMap(c => (c.forms||[c.lemma]).map(f=>f.toLowerCase()))); }
-function dueCards(){ return deck.filter(c=>c.due<=Date.now()); }
+function savedForms(){ return new Set(deck.filter(inActiveLang).flatMap(c => (c.forms||[c.lemma]).map(f=>f.toLowerCase()))); }
+function dueCards(){ return deck.filter(c=>inActiveLang(c) && c.due<=Date.now()); }
 
 function saveLookup(){
   const l = lookupState;
   if(!l || l.missing || l.core) return;
   const ex = deck.find(c=>c.lemma.toLowerCase()===l.lemma.toLowerCase());
   if(ex){ ex.forms = [...new Set([...(ex.forms||[]), l.surface])]; }
-  else deck.push({ id:Date.now(), lemma:l.lemma, translation:l.translation, note:l.note||"",
+  else deck.push({ id:Date.now(), lemma:l.lemma, translation:l.translation, note:l.note||"", lang:activeLang(),
     context:l.sentence||"", forms:[l.surface, l.lemma], due:Date.now(), interval:0, ease:2.5, reps:0, added:Date.now() });
   save(LS.deck, deck);
   lookupState.saved = true; render();
@@ -639,7 +669,7 @@ function apiHelpHTML(){
   </div>`;
 }
 function render(){
-  $("statSaved").textContent = deck.length;
+  $("statSaved").textContent = deck.filter(inActiveLang).length;
   $("statDue").textContent = dueCards().length;
   $("netStatus").textContent = (navigator.onLine ? (settings.apiKey ? "ONLINE · AI READY" : "ONLINE · OFFLINE LIBRARY") : "OFFLINE MODE") + " · " + APP_VERSION;
 
@@ -756,7 +786,7 @@ function render(){
     if(queue.length===0){
       html += `<div class="card" style="text-align:center;padding:36px;">
         <div class="display" style="font-size:26px;color:#1E3A5C;">${sessionDone>0?"Μπράβο σου!":"Nothing due right now"}</div>
-        <div style="margin-top:8px;color:#4B5563;font-size:15px;">${sessionDone>0?`You reviewed ${sessionDone} card${sessionDone===1?"":"s"}.`:(deck.length===0?"Read a passage and tap unknown words to build your deck.":"All caught up — read something new to keep growing.")}</div>
+        <div style="margin-top:8px;color:#4B5563;font-size:15px;">${sessionDone>0?`You reviewed ${sessionDone} card${sessionDone===1?"":"s"}.`:(deck.filter(inActiveLang).length===0?"Read a passage and tap unknown words to build your deck.":"All caught up — read something new to keep growing.")}</div>
         <button class="btn" style="margin-top:18px;" onclick="setTab('read')">Go read</button></div>`;
     } else {
       const c = queue[0];
@@ -798,8 +828,9 @@ function render(){
   }
 
   if(tab==="words"){
-    if(deck.length===0) html += `<div class="card" style="text-align:center;color:#6B7683;">No words yet — tap words while reading to collect them.</div>`;
-    else for(const c of [...deck].sort((a,b)=>b.added-a.added)){
+    const myWords = deck.filter(inActiveLang);
+    if(myWords.length===0) html += `<div class="card" style="text-align:center;color:#6B7683;">No words yet — tap words while reading to collect them.</div>`;
+    else for(const c of [...myWords].sort((a,b)=>b.added-a.added)){
       html += `<div class="card row" style="padding:14px;">
         <div style="min-width:0;"><span class="display" style="font-size:18px;color:#1E3A5C;">${esc(c.lemma)}</span>
         <span style="font-size:14px;color:#4B5563;margin-left:10px;">${esc(c.translation)}</span>
@@ -942,9 +973,10 @@ window.toggleGenerate = () => { generateOpen = !generateOpen; render(); };
 window.pasteGo = () => { const t=document.getElementById("pasteIn").value.trim(); if(t){ analyzeOpen = true; glossPastedText(t); } };
 window.photoGo = photoGo;
 window.exportAnki = () => {
-  if(!deck.length){ const m=document.getElementById("importMsg"); if(m) m.textContent="Deck is empty."; return; }
+  const expCards = deck.filter(inActiveLang);
+  if(!expCards.length){ const m=document.getElementById("importMsg"); if(m) m.textContent="Deck is empty for this language."; return; }
   const esc = v => '"' + String(v||"").replace(/"/g,'""') + '"';
-  const tsv = deck.map(c => [esc(c.lemma), esc(c.translation), esc(c.context||""), esc(c.note||"")].join("\t")).join("\n");
+  const tsv = expCards.map(c => [esc(c.lemma), esc(c.translation), esc(c.context||""), esc(c.note||"")].join("\t")).join("\n");
   const blob = new Blob([tsv], { type:"text/tab-separated-values" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob); a.download = "lexis-anki.tsv"; a.click();
