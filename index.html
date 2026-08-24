@@ -67,7 +67,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = "v13b";
+const APP_VERSION = "v13c";
 const SPEEDS = { fast: 0.92, medium: 0.69, slow: 0.52 };
 function curRate(){ return SPEEDS[settings.speed] || SPEEDS.fast; }
 function wordRate(){ return curRate() * 0.9; }
@@ -121,6 +121,7 @@ let cefrHelpOpen = false;
 let listened = new Set(load(LS.listened, []));
 let libFilter = { level:"all", source:"all", q:"" };   // level | source(all/mine/bundled) | search
 let analyzeOpen = false;   // collapsible Analyze/Paste panel
+let generateOpen = false;  // collapsible Generate panel
 let genBusy = false, genMsg = "";
 
 function load(k, fb){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; }catch(e){ return fb; } }
@@ -129,6 +130,11 @@ function save(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){
 // ── Gloss maps ──
 function glossMap(p){ const m={}; for(const line of p.gloss){ const [s,l,t,n] = line.split("|"); m[s.toLowerCase()] = {lemma:l, translation:t, note:n||""}; } return m; }
 function allPassages(){ return [...customLib, ...BUNDLED]; }
+function passageOrigin(p){
+  if(p.origin) return p.origin;                          // new entries
+  if(!p.cached) return "bundled";                        // bundled
+  return (typeof p.id==="string" && p.id.startsWith("paste-")) ? "imported" : "generated"; // legacy
+}
 function cleanWord(w){ return w.replace(/[.,;·!?»«"'()\[\]:—–…\d]/g,"").trim(); }
 
 // Lightweight Modern Greek suffix stemmer — catches inflected forms offline.
@@ -448,9 +454,9 @@ Respond ONLY with valid JSON, no markdown:
     catch(e){ p = salvageGloss(raw); if(!p) throw new Error("couldn't read the gloss — try again or a shorter passage"); }
     // if the model didn't echo the text back (or it was truncated), fall back to the input text
     const passageText = (p.text && p.text.length > 10) ? p.text : text;
-    const entry = { id:"paste-"+Date.now(), level:settings.level, topic:"pasted",
+    const entry = { id:"paste-"+Date.now(), level:settings.level, topic:"imported",
       title:p.title || "Captured text", text:passageText,
-      gloss:(p.gloss||[]).map(g=>Array.isArray(g)?g.join("|"):g), cached:true };
+      gloss:(p.gloss||[]).map(g=>Array.isArray(g)?g.join("|"):g), cached:true, origin:"imported" };
     customLib = [entry, ...customLib];
     save(LS.lib, customLib);
     genMsg = p.partial ? `Saved with ${entry.gloss.length} words glossed (some may be missing — tap any word to look it up).` : "";
@@ -480,7 +486,7 @@ Respond ONLY with valid JSON, no markdown:
     const p = parseAIJSON(raw);
     const entry = {
       id: "gen-"+Date.now(), level: settings.level, topic, title: p.title, text: p.text,
-      gloss: p.gloss.map(g => g.join("|")), cached: true
+      gloss: p.gloss.map(g => g.join("|")), cached: true, origin:"generated"
     };
     customLib = [entry, ...customLib];
     save(LS.lib, customLib);
@@ -658,20 +664,26 @@ function render(){
 
   if(tab==="read" && !activeP){
     html += `<div style="padding-top:10px;">`;
-    html += `<div class="card" style="padding:16px;">
-      <div class="row"><div style="font-weight:700;color:#1E3A5C;">Generate a new passage <span class="muted">(online, cached)</span></div>
-        <button class="btn sec" style="padding:5px 10px;font-size:12px;" onclick="showCefrHelp()">What do A1–C2 mean?</button></div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;" id="genLevels">
-        ${["A1","A2","B1","B2","C1","C2"].map(l=>`<button class="chip${settings.level===l?" on":""}" onclick="setLevel('${l}')">${l}</button>`).join("")}
+    html += `<div class="card" style="padding:0;overflow:hidden;">
+      <div onclick="toggleGenerate()" style="padding:16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-weight:700;color:#1E3A5C;">Generate a new passage <span class="muted">(online)</span></div>
+        <span style="color:#C89B3C;font-size:18px;transform:rotate(${generateOpen?"90":"0"}deg);transition:transform .2s;">\u203a</span>
       </div>
-      <div style="display:flex;gap:6px;margin-top:8px;">
-        ${["narrative","dialogue"].map(f=>`<button class="chip${(settings.format||"narrative")===f?" on":""}" onclick="setFormat('${f}')">${f==="narrative"?"Narrative":"Dialogue"}</button>`).join("")}
-      </div>
-      <div style="display:flex;gap:8px;margin-top:10px;">
-        <input type="text" id="topicIn" placeholder="Topic — e.g. Greek news, Porto Cheli, the Argolid…" style="flex:1;">
-        <button class="btn" onclick="genGo()" ${genBusy?"disabled":""}>${genBusy?"…":"Go"}</button>
-      </div>
-      ${genMsg?`<div class="muted" style="margin-top:8px;color:#8A6D1F;">${esc(genMsg)}</div>`:""}
+      ${generateOpen?`<div style="padding:0 16px 16px;">
+        <div class="row"><div class="muted">Choose a level and topic; Claude writes and glosses it.</div>
+          <button class="btn sec" style="padding:5px 10px;font-size:12px;flex-shrink:0;" onclick="showCefrHelp()">Levels?</button></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;" id="genLevels">
+          ${["A1","A2","B1","B2","C1","C2"].map(l=>`<button class="chip${settings.level===l?" on":""}" onclick="setLevel('${l}')">${l}</button>`).join("")}
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          ${["narrative","dialogue"].map(f=>`<button class="chip${(settings.format||"narrative")===f?" on":""}" onclick="setFormat('${f}')">${f==="narrative"?"Narrative":"Dialogue"}</button>`).join("")}
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <input type="text" id="topicIn" placeholder="Topic\u2026" style="flex:1;">
+          <button class="btn" onclick="genGo()" ${genBusy?"disabled":""}>${genBusy?"\u2026":"Go"}</button>
+        </div>
+        ${genMsg?`<div class="muted" style="margin-top:8px;color:#8A6D1F;">${esc(genMsg)}</div>`:""}
+      </div>`:""}
     </div>
     <div class="card" style="padding:0;overflow:hidden;">
       <div onclick="toggleAnalyze()" style="padding:16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
@@ -698,15 +710,14 @@ function render(){
         ${levels.map(lv=>`<button class="chip${libFilter.level===lv?" on":""}" style="font-size:12px;padding:5px 9px;" onclick="setLibFilter('level','${lv}')">${lv==="all"?"All levels":lv}</button>`).join("")}
       </div>
       <div style="display:flex;gap:5px;flex-wrap:wrap;">
-        ${[["all","All"],["mine","My texts"],["bundled","Built-in"]].map(([v,l])=>`<button class="chip${libFilter.source===v?" on":""}" style="font-size:12px;padding:5px 9px;" onclick="setLibFilter('source','${v}')">${l}</button>`).join("")}
+        ${[["all","All"],["generated","Generated"],["imported","Imported"],["bundled","Built-in"]].map(([v,l])=>`<button class="chip${libFilter.source===v?" on":""}" style="font-size:12px;padding:5px 9px;" onclick="setLibFilter('source','${v}')">${l}</button>`).join("")}
       </div>
     </div>`;
     // apply filters
     const q = libFilter.q.trim().toLowerCase();
     const filtered = all.filter(p => {
       if(libFilter.level!=="all" && p.level!==libFilter.level) return false;
-      if(libFilter.source==="mine" && !p.cached) return false;
-      if(libFilter.source==="bundled" && p.cached) return false;
+      if(libFilter.source!=="all" && passageOrigin(p)!==libFilter.source) return false;
       if(q && !((p.title||"").toLowerCase().includes(q) || (p.topic||"").toLowerCase().includes(q))) return false;
       return true;
     });
@@ -718,7 +729,7 @@ function render(){
       html += `<div class="card row" style="padding:16px;cursor:pointer;" onclick="openP('${p.id}')">
         <div style="min-width:0;"><div class="display" style="font-size:19px;color:#1E3A5C;">${heard?'<span title="listened" style="color:#3E7C4F;">✓ </span>':""}${esc(p.title)}</div>
         <div class="muted" style="margin-top:2px;">${p.level} · ${esc(p.topic)} · ${p.gloss.length} glossed
-        <span class="badge ${p.cached?"cached":"bundled"}">${p.cached?"My text":"Built-in"}</span>${heard?' <span class="badge" style="background:#E3EFE6;color:#3E7C4F;">listened</span>':""}</div></div>
+        <span class="badge ${p.cached?"cached":"bundled"}">${({generated:"Generated",imported:"Imported",bundled:"Built-in"})[passageOrigin(p)]}</span>${heard?' <span class="badge" style="background:#E3EFE6;color:#3E7C4F;">listened</span>':""}</div></div>
         <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
         ${p.cached?`<button style="background:none;border:none;font-size:16px;cursor:pointer;color:#B4432F;padding:6px;" onclick="event.stopPropagation();delPassage('${p.id}')">✕</button>`:""}
         <span style="color:#C89B3C;font-size:20px;">→</span></div></div>`;
@@ -886,7 +897,7 @@ window.speakPassage = () => window.togglePlay();
 window.saveLookup = saveLookup;
 window.answer = answer;
 window.delCard = delCard;
-window.genGo = () => { const t = $("topicIn").value.trim() || "Greek current affairs"; generateAndCache(t); };
+window.genGo = () => { generateOpen = true; const t = $("topicIn").value.trim() || "Greek current affairs"; generateAndCache(t); };
 window.setSpeed = k => { settings.speed = k; save(LS.settings, settings); render(); };
 window.setFormat = f => {
   const typed = $("topicIn") ? $("topicIn").value : "";
@@ -927,6 +938,7 @@ window.exportDeck = () => {
   a.href = URL.createObjectURL(blob); a.download = "lexis-backup.json"; a.click();
 };
 window.toggleAnalyze = () => { analyzeOpen = !analyzeOpen; render(); };
+window.toggleGenerate = () => { generateOpen = !generateOpen; render(); };
 window.pasteGo = () => { const t=document.getElementById("pasteIn").value.trim(); if(t){ analyzeOpen = true; glossPastedText(t); } };
 window.photoGo = photoGo;
 window.exportAnki = () => {

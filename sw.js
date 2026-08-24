@@ -1,5 +1,5 @@
 // ΛΕΞΙΣ service worker — caches the app shell so it opens with no internet
-const CACHE = "lexis-v13b";
+const CACHE = "lexis-v13c";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./icon.png"];
 
 self.addEventListener("install", e => {
