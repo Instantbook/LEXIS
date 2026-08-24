@@ -67,7 +67,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = "v13a";
+const APP_VERSION = "v13b";
 const SPEEDS = { fast: 0.92, medium: 0.69, slow: 0.52 };
 function curRate(){ return SPEEDS[settings.speed] || SPEEDS.fast; }
 function wordRate(){ return curRate() * 0.9; }
@@ -120,6 +120,7 @@ let apiHelpOpen = false;
 let cefrHelpOpen = false;
 let listened = new Set(load(LS.listened, []));
 let libFilter = { level:"all", source:"all", q:"" };   // level | source(all/mine/bundled) | search
+let analyzeOpen = false;   // collapsible Analyze/Paste panel
 let genBusy = false, genMsg = "";
 
 function load(k, fb){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; }catch(e){ return fb; } }
@@ -363,8 +364,7 @@ async function callVision(prompt, b64, media, maxTokens){
   const text = await prov.vision(prompt, b64, media, maxTokens, currentModel(), settings.apiKey);
   return String(text||"").replace(/```json|```/g,"").trim();
 }
-// Robust JSON extraction — tolerates preamble, fences, trailing prose, trailing commas,
-// and (critically for vision OCR) reports truncation clearly instead of "Unexpected EOF".
+// Robust JSON extraction — tolerates preamble, fences, trailing prose, trailing commas.
 function parseAIJSON(raw){
   if(!raw || !raw.trim()) throw new Error("empty response (check API key / quota)");
   let clean = raw.replace(/```json|```/g,"").trim();
@@ -375,15 +375,23 @@ function parseAIJSON(raw){
   const end = Math.max(clean.lastIndexOf("}"), clean.lastIndexOf("]"));
   let slice = (end>start) ? clean.slice(start, end+1) : clean.slice(start);
   try{ return JSON.parse(slice); }
-  catch(e){
-    try{ return JSON.parse(slice.replace(/,(\s*[}\]])/g,"$1")); }  // strip trailing commas
-    catch(e2){
-      // detect truncation (open braces/brackets not closed) for a clearer message
-      const opens = (slice.match(/[\{\[]/g)||[]).length, closes = (slice.match(/[\}\]]/g)||[]).length;
-      if(opens>closes) throw new Error("response was cut off (too much text — try a shorter passage or photo)");
-      throw new Error("couldn't parse response");
-    }
+  catch(e){ return JSON.parse(slice.replace(/,(\s*[}\]])/g,"$1")); }  // strip trailing commas
+}
+// Salvage a gloss object even if the JSON was truncated mid-array — recover the complete
+// [surface,lemma,translation,note] rows and the title/text if present. Returns null if nothing usable.
+function salvageGloss(raw){
+  const clean = raw.replace(/```json|```/g,"").trim();
+  let title = (clean.match(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/)||[])[1];
+  let text  = (clean.match(/"text"\s*:\s*"((?:[^"\\]|\\.)*)"/)||[])[1];
+  const rows = [];
+  // match complete 4-string arrays: ["a","b","c","d"]
+  const re = /\[\s*"((?:[^"\\]|\\.)*)"\s*,\s*"((?:[^"\\]|\\.)*)"\s*,\s*"((?:[^"\\]|\\.)*)"\s*,\s*"((?:[^"\\]|\\.)*)"\s*\]/g;
+  let m; while((m = re.exec(clean))){ 
+    try{ rows.push([JSON.parse('"'+m[1]+'"'),JSON.parse('"'+m[2]+'"'),JSON.parse('"'+m[3]+'"'),JSON.parse('"'+m[4]+'"')]); }
+    catch(e){ rows.push([m[1],m[2],m[3],m[4]]); }
   }
+  if(!rows.length) return null;
+  return { title: title||"Captured text", text: text||"", gloss: rows, partial:true };
 }
 // back-compat alias so existing call sites keep working
 const callClaude = callAI;
@@ -407,6 +415,7 @@ function fileToB64(file){
 }
 async function photoGo(ev){
   const file = ev.target.files[0]; if(!file) return;
+  analyzeOpen = true;
   if(!settings.apiKey){ genMsg = "Add an AI provider key in Settings first (tap \"How this works\")."; render(); return; }
   if(!navigator.onLine){ genMsg = "You're offline — reading a photo needs internet."; render(); return; }
   genBusy = true; genMsg = "Reading the photo…"; render();
@@ -433,13 +442,19 @@ TEXT:\n"""${text.slice(0,4000)}"""
 Respond ONLY with valid JSON, no markdown:
 {"title":"short Greek title","text":"the cleaned passage","gloss":[["surface","lemma","translation","note or empty"],...]}`;
   try{
-    const raw = await callClaude(prompt, 8000);
-    const p = parseAIJSON(raw);
-    const entry = { id:"paste-"+Date.now(), level:settings.level, topic:"pasted", title:p.title,
-      text:p.text, gloss:p.gloss.map(g=>g.join("|")), cached:true };
+    const raw = await callClaude(prompt, 16000);
+    let p;
+    try{ p = parseAIJSON(raw); }
+    catch(e){ p = salvageGloss(raw); if(!p) throw new Error("couldn't read the gloss — try again or a shorter passage"); }
+    // if the model didn't echo the text back (or it was truncated), fall back to the input text
+    const passageText = (p.text && p.text.length > 10) ? p.text : text;
+    const entry = { id:"paste-"+Date.now(), level:settings.level, topic:"pasted",
+      title:p.title || "Captured text", text:passageText,
+      gloss:(p.gloss||[]).map(g=>Array.isArray(g)?g.join("|"):g), cached:true };
     customLib = [entry, ...customLib];
     save(LS.lib, customLib);
-    genMsg = ""; activeP = entry; lookupState = null;
+    genMsg = p.partial ? `Saved with ${entry.gloss.length} words glossed (some may be missing — tap any word to look it up).` : "";
+    activeP = entry; lookupState = null;
   }catch(e){ genMsg = "Glossing failed: " + e.message; }
   genBusy = false; render();
 }
@@ -658,15 +673,20 @@ function render(){
       </div>
       ${genMsg?`<div class="muted" style="margin-top:8px;color:#8A6D1F;">${esc(genMsg)}</div>`:""}
     </div>
-    <div class="card" style="padding:16px;">
-      <div style="font-weight:700;color:#1E3A5C;">Paste Greek text <span class="muted">(article, lyrics, anything)</span></div>
-      <div class="muted" style="margin:4px 0 10px;">Claude formats it and glosses every word, then caches it for offline reading &amp; tapping.</div>
-      <textarea id="pasteIn" placeholder="Paste Greek text here…" style="width:100%;min-height:90px;padding:10px;border-radius:10px;border:1.5px solid #D8D2C4;font-family:inherit;font-size:15px;box-sizing:border-box;"></textarea>
-      <button class="btn" style="margin-top:8px;width:100%;" onclick="pasteGo()" ${genBusy?"disabled":""}>${genBusy?"…":"Gloss & save"}</button>
-      <div class="muted" style="margin:12px 0 6px;text-align:center;">— or —</div>
-      <label class="btn sec" style="width:100%;display:block;text-align:center;box-sizing:border-box;">📷 Snap a photo of Greek text
-        <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="photoGo(event)"></label>
-      <div class="muted" style="margin-top:6px;font-size:12.5px;">Fill the frame with the text, good light, hold steady. Reads it with your AI provider, then glosses it.</div>
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div onclick="toggleAnalyze()" style="padding:16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-weight:700;color:#1E3A5C;">Analyze Greek text <span class="muted">(article, lyrics, photo)</span></div>
+        <span style="color:#C89B3C;font-size:18px;transform:rotate(${analyzeOpen?"90":"0"}deg);transition:transform .2s;">›</span>
+      </div>
+      ${analyzeOpen?`<div style="padding:0 16px 16px;">
+        <div class="muted" style="margin:0 0 10px;">Paste text or snap a photo. It's glossed word-by-word and cached for offline reading &amp; tapping.</div>
+        <textarea id="pasteIn" placeholder="Paste Greek text here…" style="width:100%;min-height:90px;padding:10px;border-radius:10px;border:1.5px solid #D8D2C4;font-family:inherit;font-size:15px;box-sizing:border-box;"></textarea>
+        <button class="btn" style="margin-top:8px;width:100%;" onclick="pasteGo()" ${genBusy?"disabled":""}>${genBusy?"…":"Gloss & save"}</button>
+        <div class="muted" style="margin:12px 0 6px;text-align:center;">— or —</div>
+        <label class="btn sec" style="width:100%;display:block;text-align:center;box-sizing:border-box;">📷 Snap a photo of Greek text
+          <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="photoGo(event)"></label>
+        <div class="muted" style="margin-top:6px;font-size:12.5px;">Fill the frame with the text, good light, hold steady.</div>
+      </div>`:""}
     </div>`;
     // ── Library filters ──
     const all = allPassages();
@@ -906,7 +926,8 @@ window.exportDeck = () => {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob); a.download = "lexis-backup.json"; a.click();
 };
-window.pasteGo = () => { const t=document.getElementById("pasteIn").value.trim(); if(t) glossPastedText(t); };
+window.toggleAnalyze = () => { analyzeOpen = !analyzeOpen; render(); };
+window.pasteGo = () => { const t=document.getElementById("pasteIn").value.trim(); if(t){ analyzeOpen = true; glossPastedText(t); } };
 window.photoGo = photoGo;
 window.exportAnki = () => {
   if(!deck.length){ const m=document.getElementById("importMsg"); if(m) m.textContent="Deck is empty."; return; }
