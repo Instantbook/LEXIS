@@ -67,7 +67,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = "v18";
+const APP_VERSION = "v20";
 const SPEEDS = { fast: 0.92, medium: 0.69, slow: 0.52 };
 function curRate(){ return SPEEDS[settings.speed] || SPEEDS.fast; }
 function wordRate(){ return curRate() * 0.9; }
@@ -79,7 +79,7 @@ function wordRate(){ return curRate() * 0.9; }
 // ═══════════════════════════════════════════════════════════
 
 const DAY = 86400000;
-const LS = { deck:"lexis.deck", lib:"lexis.customLib", settings:"lexis.settings", listened:"lexis.listened" };
+const LS = { deck:"lexis.deck", lib:"lexis.customLib", settings:"lexis.settings", listened:"lexis.listened", practiceX:"lexis.practiceExtra" };
 
 // ── Core function-word dictionary ──
 const EL_CORE = {"ο":"the (masc.)","η":"the (fem.)","το":"the (neut.)","οι":"the (pl.)","τα":"the (neut. pl.)","του":"of the / his","της":"of the / her","των":"of the (pl.)","τον":"the (masc. acc.)","την":"the (fem. acc.)","τη":"the (fem. acc.)","τις":"the (fem. pl. acc.)","τους":"the / them / their","στο":"in/at/to the","στη":"in/at/to the","στην":"in/at/to the","στον":"in/at/to the","στα":"in/at/to the (pl.)","στις":"in/at/to the (pl.)","στους":"in/at/to the (pl.)","σε":"in, at, to","με":"with","από":"from, by","για":"for, about","και":"and","κι":"and","να":"to (subjunctive)","θα":"will (future)","δεν":"not","δε":"not","μη":"don't, not","μην":"don't, not","που":"that, which, who","πως":"that","ότι":"that","ώστε":"so that","αλλά":"but","μα":"but","όμως":"however","ενώ":"while, whereas","καθώς":"as, while","όταν":"when","αν":"if","ούτε":"neither, nor","όπου":"where","όπως":"as, like","είναι":"is, are","ήταν":"was, were","έχει":"has","έχουν":"have","είχε":"had","μας":"us, our","σας":"you, your (pl.)","μου":"me, my","σου":"you, your","εμείς":"we","αυτό":"this, it","αυτός":"he, this","αυτή":"she, this","μια":"a, one (fem.)","ένα":"a, one (neut.)","ένας":"a, one (masc.)","κάθε":"each, every","πολύ":"very, much","πολλά":"many","πιο":"more","σαν":"like, as","ως":"as","τότε":"then","σήμερα":"today","πάνω":"up, on","κάτω":"down, under","μέσα":"inside","έξω":"outside","όλη":"all, whole","όλοι":"everyone","όλα":"everything","λίγο":"a little","πριν":"before","μετά":"after","ακόμα":"still, yet","εκεί":"there","εδώ":"here","τόσο":"so (much)","όσο":"as much as","παρά":"despite","ή":"or","μέχρι":"until","ποτέ":"never","πάντα":"always","κάτι":"something","επειδή":"because","ώρα":"hour, time","νέο":"new","νερά":"water (pl.)","νερό":"water","νησί":"island","χώρες":"countries","φρέσκο":"fresh","άρχισαν":"they began","βγήκαμε":"we went out","δικές":"one's own","σημαντικό":"significant","ελληνικής":"Greek (gen.)","φτάνει":"reaches; enough"};
@@ -108,12 +108,15 @@ gloss:["μύθος|ο μύθος|myth","ικάρου|ο Ίκαρος|Icarus","ε
 
 // ── State ── (populated by initStorage() before first render)
 let deck = [], customLib = [], settings = {}, listened = new Set();
+let practiceExtra = {};   // AI-grown practice words, keyed "lang:tier" — cached for offline drilling
 let tab = "read", activeP = null, lookupState = null;
 let queue = [], revealed = false, sessionDone = 0;
 let reviewMode = "recognition"; // recognition | recall | cloze
 let apiHelpOpen = false;
 let cefrHelpOpen = false;
 let libFilter = { level:"all", source:"all", q:"" };   // level | source(all/mine/bundled) | search
+let practiceWord = null, practiceRevealed = false, practiceHist = [];   // word practice drill
+let practiceMsg = "", practiceBusy = false;
 
 async function initStorage(){
   try{
@@ -133,6 +136,7 @@ async function initStorage(){
   customLib = await read(LS.lib, []);
   settings  = await read(LS.settings, {});
   listened  = new Set(await read(LS.listened, []));
+  practiceExtra = await read(LS.practiceX, {}) || {};
 
   // settings defaults / migrations
   const sd = { apiKey:"", model:"claude-sonnet-5", level:"B2", provider:"anthropic" };
@@ -144,6 +148,7 @@ async function initStorage(){
   // prime memCache so synchronous save() has current values
   memCache[LS.deck]=deck; memCache[LS.lib]=customLib;
   memCache[LS.settings]=settings; memCache[LS.listened]=[...listened];
+  memCache[LS.practiceX]=practiceExtra;
 }
 let analyzeOpen = false;   // collapsible Analyze/Paste panel
 let generateOpen = false;  // collapsible Generate panel
@@ -688,6 +693,151 @@ function ukStem(word){
   return [...cands];
 }
 
+// ═══ WORD PRACTICE LISTS (v19) — original graded frequency vocabulary ═══
+// Four CEFR-ish tiers per language, parallel concept sets. Format: "word|translation".
+const EL_PRACTICE = {
+A1:["το νερό|water","το ψωμί|bread","το γάλα|milk","το σπίτι|house","η πόρτα|door","το τραπέζι|table","η μέρα|day","το πρωί|morning","η νύχτα|night","ο άντρας|man",
+"η γυναίκα|woman","το παιδί|child","ο φίλος|friend","η μητέρα|mother","ο πατέρας|father","ο χρόνος|time","η χρονιά|year","το χέρι|hand","το μάτι|eye","το κεφάλι|head",
+"ο ήλιος|sun","το φεγγάρι|moon","ο σκύλος|dog","η γάτα|cat","το ψάρι|fish","μεγάλος|big","μικρός|small","καλός|good","κακός|bad","καινούργιος|new",
+"παλιός|old","ζεστός|hot","κρύος|cold","τρώω|to eat","πίνω|to drink","κοιμάμαι|to sleep","βλέπω|to see","μιλάω|to speak","αγαπώ|to love","δουλεύω|to work",
+"ένα|one","δύο|two","τρία|three","τέσσερα|four","πέντε|five","έξι|six","επτά|seven","οκτώ|eight","εννιά|nine","δέκα|ten",
+"άσπρος|white","μαύρος|black","κόκκινος|red","πράσινος|green","μπλε|blue","κίτρινος|yellow","το χρώμα|color","το φως|light","το σκοτάδι|darkness","ο ουρανός|sky",
+"ο παππούς|grandfather","η γιαγιά|grandmother","ο γιος|son","η κόρη|daughter","το μωρό|baby","το αγόρι|boy","το κορίτσι|girl","ο κύριος|gentleman, Mr.","η κυρία|lady, Mrs.","ο άνθρωπος|person, human",
+"το στόμα|mouth","η μύτη|nose","το αυτί|ear","το πόδι|foot, leg","το δόντι|tooth","τα μαλλιά|hair","η καρδιά|heart","το πρόσωπο|face","η πλάτη|back","το δάχτυλο|finger",
+"το κρεβάτι|bed","η καρέκλα|chair","το παράθυρο|window","η κουζίνα|kitchen","το μπάνιο|bathroom","το δωμάτιο|room","το κλειδί|key","ο τοίχος|wall","το πάτωμα|floor","η σκάλα|stairs",
+"το αυγό|egg","το ρύζι|rice","η ζάχαρη|sugar","το αλάτι|salt","το μήλο|apple","το πορτοκάλι|orange","η ντομάτα|tomato","η πατάτα|potato","η σούπα|soup","το λάδι|oil",
+"ο καφές|coffee","το τσάι|tea","η μπύρα|beer","ο χυμός|juice","το πιάτο|plate","το ποτήρι|glass","το μαχαίρι|knife","το πιρούνι|fork","το κουτάλι|spoon","το γλυκό|dessert, sweet",
+"το πουλί|bird","το άλογο|horse","η αγελάδα|cow","το πρόβατο|sheep","η κότα|hen","το ζώο|animal","η μύγα|fly","η μέλισσα|bee","το λιοντάρι|lion","η αρκούδα|bear",
+"τα ρούχα|clothes","το παπούτσι|shoe","το πουκάμισο|shirt","το παντελόνι|trousers","το φόρεμα|dress","το καπέλο|hat","η τσάντα|bag","η τσέπη|pocket","το παλτό|coat","η ζώνη|belt",
+"κάνω|to do, make","δίνω|to give","παίρνω|to take","πηγαίνω|to go","έρχομαι|to come","ξέρω|to know","θέλω|to want","μπορώ|to be able","ακούω|to hear, listen","γράφω|to write",
+"διαβάζω|to read","τρέχω|to run","περπατάω|to walk","κάθομαι|to sit","σηκώνομαι|to get up","ρωτάω|to ask","παίζω|to play","γελάω|to laugh","μένω|to stay, live","ζω|to live",
+"βάζω|to put","βγάζω|to take out","φεύγω|to leave","φτάνω|to arrive","αφήνω|to let, leave","δείχνω|to show","περιμένω|to wait","ψάχνω|to look for","κρατάω|to hold","στέλνω|to send",
+"όμορφος|beautiful","άσχημος|ugly","ψηλός|tall, high","κοντός|short","γρήγορος|fast","αργός|slow","εύκολος|easy","δύσκολος|difficult","ακριβός|expensive","φτηνός|cheap",
+"γεμάτος|full","άδειος|empty","καθαρός|clean","βρώμικος|dirty","ελαφρύς|light (weight)","βαρύς|heavy","δυνατός|strong, loud","αδύναμος|weak","χαρούμενος|happy","λυπημένος|sad",
+"η ώρα|hour","το λεπτό|minute","η εβδομάδα|week","ο μήνας|month","σήμερα|today","αύριο|tomorrow","χθες|yesterday","το βράδυ|evening","το μεσημέρι|noon","η στιγμή|moment",
+"η Δευτέρα|Monday","η Τρίτη|Tuesday","η Τετάρτη|Wednesday","η Πέμπτη|Thursday","η Παρασκευή|Friday","το Σάββατο|Saturday","η Κυριακή|Sunday","το όνομα|name","το πράγμα|thing","η ζωή|life"],
+A2:["το μαγαζί|shop","τα λεφτά|money","η τιμή|price","η αγορά|market","η πόλη|city","το χωριό|village","ο δρόμος|street","το αυτοκίνητο|car","το τρένο|train","το εισιτήριο|ticket",
+"το φαγητό|food","το πρωινό|breakfast","το βραδινό|dinner","το φρούτο|fruit","το λαχανικό|vegetable","το κρέας|meat","το τυρί|cheese","το κρασί|wine","ο καιρός|weather","η βροχή|rain",
+"το χιόνι|snow","ο άνεμος|wind","η θάλασσα|sea","το βουνό|mountain","το δέντρο|tree","το λουλούδι|flower","η οικογένεια|family","ο αδερφός|brother","η αδερφή|sister","ο γιατρός|doctor",
+"το σχολείο|school","το βιβλίο|book","το γράμμα|letter","η λέξη|word","η ερώτηση|question","η απάντηση|answer","αγοράζω|to buy","πουλάω|to sell","ανοίγω|to open","κλείνω|to close",
+"το αεροπλάνο|airplane","το πλοίο|ship","το λεωφορείο|bus","το ποδήλατο|bicycle","ο σταθμός|station","το αεροδρόμιο|airport","το ξενοδοχείο|hotel","η βαλίτσα|suitcase","ο χάρτης|map","ο τουρίστας|tourist",
+"η γέφυρα|bridge","η πλατεία|square","το πάρκο|park","η γωνία|corner","το κέντρο|center","η εκκλησία|church","το μουσείο|museum","το θέατρο|theater","ο κινηματογράφος|cinema","η βιβλιοθήκη|library",
+"το νοσοκομείο|hospital","το φαρμακείο|pharmacy","η αστυνομία|police","ο αστυνομικός|police officer","ο πυροσβέστης|firefighter","ο δάσκαλος|teacher","ο μαθητής|student","ο σερβιτόρος|waiter","ο οδηγός|driver","ο μάγειρας|cook",
+"το γραφείο|office","η εταιρεία|company","ο πελάτης|customer","ο μισθός|salary","ο λογαριασμός|bill, account","η κάρτα|card","το ταμείο|checkout","η απόδειξη|receipt","η προσφορά|offer","το δώρο|gift",
+"το κοτόπουλο|chicken","το αρνί|lamb","το χοιρινό|pork","η σαλάτα|salad","το γιαούρτι|yogurt","το μέλι|honey","το βούτυρο|butter","η μαρμελάδα|jam","το μπισκότο|biscuit","η σοκολάτα|chocolate",
+"το σταφύλι|grape","το καρπούζι|watermelon","το ροδάκινο|peach","η φράουλα|strawberry","το λεμόνι|lemon","το κρεμμύδι|onion","το σκόρδο|garlic","το καρότο|carrot","το αγγούρι|cucumber","η πιπεριά|pepper",
+"μαγειρεύω|to cook","δοκιμάζω|to try, taste","παραγγέλνω|to order (food)","πληρώνω|to pay","κοστίζει|it costs","ταξιδεύω|to travel","οδηγώ|to drive","πετάω|to fly, throw","επισκέπτομαι|to visit","γυρίζω|to return, turn",
+"φοράω|to wear","ντύνομαι|to get dressed","πλένω|to wash","καθαρίζω|to clean","φτιάχνω|to make, fix","χαλάω|to break, spoil","διορθώνω|to correct, fix","χρησιμοποιώ|to use","χρειάζομαι|to need","νομίζω|to think",
+"η δουλειά|job, work","το μάθημα|lesson","η τάξη|classroom, grade","ο βαθμός|grade, degree","η άσκηση|exercise","η εξέταση|exam","το πτυχίο|degree, diploma","μαθαίνω|to learn","διδάσκω|to teach","σπουδάζω|to study",
+"το τηλέφωνο|telephone","ο υπολογιστής|computer","η οθόνη|screen","το μήνυμα|message","η φωτογραφία|photograph","η μουσική|music","το τραγούδι|song","ο χορός|dance","η ταινία|film","το παιχνίδι|game, toy",
+"ο κήπος|garden","η αυλή|yard, courtyard","ο φράχτης|fence","η στέγη|roof","το χωράφι|field","η λίμνη|lake","το ποτάμι|river","το δάσος|forest","η παραλία|beach","το κύμα|wave",
+"ο ήχος|sound","η φωνή|voice","η μυρωδιά|smell","η γεύση|taste","το νόμισμα|coin, currency","ο αριθμός|number","η σειρά|turn, row","το μέγεθος|size","το σχήμα|shape","το κομμάτι|piece",
+"ανεβαίνω|to go up","κατεβαίνω|to go down","μπαίνω|to enter","βγαίνω|to go out","στρίβω|to turn","σταματάω|to stop","σπρώχνω|to push","τραβάω|to pull","πέφτω|to fall","σηκώνω|to lift",
+"κερδίζω|to win, earn","κλέβω|to steal","κρύβω|to hide","βρίσκομαι|to be located","συναντώ|to meet","καλώ|to invite, call","γιορτάζω|to celebrate","τραγουδάω|to sing","ζωγραφίζω|to draw, paint","φωνάζω|to shout",
+"ήσυχος|quiet","άνετος|comfortable","έτοιμος|ready","ανοιχτός|open","κλειστός|closed","ίδιος|same","διαφορετικός|different","σωστός|correct","λανθασμένος|wrong","επόμενος|next",
+"προηγούμενος|previous","τελευταίος|last","πρώτος|first","δεύτερος|second","τρίτος|third","μισός|half","ολόκληρος|whole","μερικοί|some","αρκετός|enough","λίγοι|few",
+"ο χειμώνας|winter","η άνοιξη|spring","το καλοκαίρι|summer","το φθινόπωρο|autumn","ο πάγος|ice","η ομίχλη|fog","η καταιγίδα|storm","ο κεραυνός|lightning","η ζέστη|heat","το κρύο|cold (noun)",
+"το γεύμα|meal","η πείνα|hunger","η δίψα|thirst","ο φούρνος|oven, bakery","το ψυγείο|fridge","η κατσαρόλα|pot","το τηγάνι|frying pan","η συνταγή|recipe, prescription","το υλικό|ingredient, material","νόστιμος|tasty",
+"ο γάμος|wedding, marriage","η γιορτή|celebration","τα γενέθλια|birthday","ο καλεσμένος|guest","η παρέα|company (friends)","η επίσκεψη|visit","η βόλτα|stroll, walk","η συζήτηση|conversation","το αστείο|joke","η αγκαλιά|hug",
+"υγιής|healthy","άρρωστος|ill","κουρασμένος|tired","ο πόνος|pain","ο πυρετός|fever","το χάπι|pill","η ένεση|injection","ο οδοντίατρος|dentist","το ασθενοφόρο|ambulance","η βοήθεια|help (noun)",
+"η εφημερίδα|newspaper","το περιοδικό|magazine","η είδηση|news item","η διαφήμιση|advertisement","ο τίτλος|title","η σελίδα|page","η γλώσσα|language, tongue","η φράση|phrase","το τετράδιο|notebook","το μολύβι|pencil"],
+B1:["η γνώμη|opinion","η εμπειρία|experience","η απόφαση|decision","το πρόβλημα|problem","ο λόγος|reason, speech","το παράδειγμα|example","η ιστορία|story, history","τα νέα|news","η υγεία|health","το ταξίδι|journey",
+"οι διακοπές|holiday","η συνάντηση|meeting","ο γείτονας|neighbor","η ανάμνηση|memory","το όνειρο|dream","η ελπίδα|hope","ο φόβος|fear","η χαρά|joy","το λάθος|mistake","η συνήθεια|habit",
+"το μέλλον|future","το παρελθόν|past","αποφασίζω|to decide","εξηγώ|to explain","θυμάμαι|to remember","ξεχνάω|to forget","υπόσχομαι|to promise","ετοιμάζω|to prepare","συνεχίζω|to continue","αλλάζω|to change",
+"βοηθάω|to help","προσπαθώ|to try","βρίσκω|to find","χάνω|to lose","αρχίζω|to begin","τελειώνω|to finish","πιστεύω|to believe","καταλαβαίνω|to understand","νιώθω|to feel","διαλέγω|to choose",
+"η αγάπη|love (noun)","η φιλία|friendship","ο έρωτας|romantic love","η εμπιστοσύνη|trust","η ειλικρίνεια|honesty","το ψέμα|lie","η αλήθεια|truth","το μυστικό|secret","η υπόσχεση|promise (noun)","η συγγνώμη|apology",
+"θυμωμένος|angry","νευρικός|nervous","ήρεμος|calm","περήφανος|proud","ζηλιάρης|jealous","ντροπαλός|shy","ευγενικός|polite, kind","αγενής|rude","γενναίος|brave","δειλός|cowardly",
+"έξυπνος|clever","χαζός|silly","σοβαρός|serious","αστείος|funny","τεμπέλης|lazy","εργατικός|hard-working","προσεκτικός|careful","απρόσεκτος|careless","υπομονετικός|patient","ανυπόμονος|impatient",
+"η λύπη|sadness","ο θυμός|anger","η έκπληξη|surprise","το άγχος|stress, anxiety","η ανησυχία|worry","η μοναξιά|loneliness","η βαρεμάρα|boredom","ο ενθουσιασμός|enthusiasm","η περιέργεια|curiosity","η ζήλια|jealousy",
+"το επάγγελμα|profession","η συνέντευξη|interview","το βιογραφικό|CV","η σύμβαση|contract","ο συνάδελφος|colleague","το αφεντικό|boss","η σύσκεψη|work meeting","η προαγωγή|promotion (job)","η απόλυση|dismissal","η σύνταξη|pension",
+"ο στόχος|goal, target","το σχέδιο|plan, drawing","η ιδέα|idea","η πρόταση|suggestion, sentence","η επιλογή|choice","η αλλαγή|change (noun)","η βελτίωση|improvement","η προσπάθεια|effort","η πρόοδος|progress","το αποτέλεσμα|result",
+"η πληροφορία|information","η λεπτομέρεια|detail","η περιγραφή|description","η εξήγηση|explanation","η οδηγία|instruction","ο κανόνας|rule","η εξαίρεση|exception","η διαφορά|difference","η ομοιότητα|similarity","η σύγκριση|comparison",
+"συμφωνώ|to agree","διαφωνώ|to disagree","συζητάω|to discuss","προτείνω|to suggest","αρνούμαι|to refuse","δέχομαι|to accept","επιτρέπω|to allow","απαγορεύω|to forbid","παραδέχομαι|to admit","παραπονιέμαι|to complain",
+"κατηγορώ|to accuse","συγχωρώ|to forgive","ευχαριστώ|to thank","ζητάω|to ask for","δανείζω|to lend","δανείζομαι|to borrow","μοιράζομαι|to share","ανήκω|to belong","εξαρτάται|it depends","αξίζει|it is worth",
+"ο πλανήτης|planet","η φύση|nature","το κλίμα|climate","η ενέργεια|energy","τα σκουπίδια|rubbish","η ανακύκλωση|recycling","η ρύπανση|pollution","ο πληθυσμός|population","το είδος|kind, species","το φαινόμενο|phenomenon",
+"η τεχνολογία|technology","το διαδίκτυο|internet","ο ιστότοπος|website","ο κωδικός|password, code","ο χρήστης|user","η συσκευή|device","η εφαρμογή|app, application","το αρχείο|file","η σύνδεση|connection","κατεβάζω|to download",
+"η κυκλοφορία|traffic, circulation","το ατύχημα|accident","ο κίνδυνος|danger","η ασφάλεια|safety, insurance","η προσοχή|attention","ο τραυματισμός|injury","η φωτιά|fire","ο σεισμός|earthquake","η πλημμύρα|flood","το φρένο|brake",
+"η άδεια|permission, license","το δικαστήριο|court","ο δικηγόρος|lawyer","ο μάρτυρας|witness","το πρόστιμο|fine (penalty)","η κλοπή|theft","ο κλέφτης|thief","η φυλακή|prison","ο κανονισμός|regulation","η υποχρέωση|obligation",
+"το κατάστημα|store","η έκπτωση|discount","η ποιότητα|quality","η ποσότητα|quantity","η παραγγελία|order (purchase)","η αποστολή|shipment, mission","ο καταναλωτής|consumer","το προϊόν|product","η μάρκα|brand","η εγγύηση|guarantee",
+"ο αγώνας|match, struggle","η ομάδα|team, group","ο παίκτης|player","ο νικητής|winner","η ήττα|defeat","ο διαιτητής|referee","το γήπεδο|stadium, court","η προπόνηση|training","το ρεκόρ|record","ο θεατής|spectator",
+"η δίαιτα|diet","η γυμναστική|exercise (fitness)","ο ύπνος|sleep (noun)","η ξεκούραση|rest","το βάρος|weight","η δύναμη|strength, power","η αναπνοή|breath","το αίμα|blood","το δέρμα|skin","ο εγκέφαλος|brain",
+"εμφανίζομαι|to appear","εξαφανίζομαι|to disappear","μεγαλώνω|to grow up","γερνάω|to grow old","παντρεύομαι|to marry","χωρίζω|to separate, divorce","γεννιέμαι|to be born","πεθαίνω|to die","μετακομίζω|to move house","ταιριάζω|to suit, match",
+"καταφέρνω|to manage (to do)","αποτυγχάνω|to fail","τολμάω|to dare","σκοπεύω|to intend","ελπίζω|to hope","φοβάμαι|to be afraid","ανησυχώ|to worry","ηρεμώ|to calm down","απολαμβάνω|to enjoy","βαριέμαι|to be bored",
+"περιέχω|to contain","αποτελείται|to consist of","σημαίνει|it means","μεταφράζω|to translate","προφέρω|to pronounce","επαναλαμβάνω|to repeat","υπενθυμίζω|to remind","σημειώνω|to note down","υπογράφω|to sign","ακυρώνω|to cancel",
+"η διεύθυνση|address, direction","το ταχυδρομείο|post office","ο φάκελος|envelope, folder","το δέμα|parcel","η υπογραφή|signature","το έγγραφο|document","η αίτηση|application","το πιστοποιητικό|certificate","η ταυτότητα|ID card, identity","το διαβατήριο|passport",
+"ο συγγραφέας|writer","ο ποιητής|poet","το μυθιστόρημα|novel","ο πίνακας|painting, board","ο καλλιτέχνης|artist","η έκθεση|exhibition, essay","η σκηνή|stage, scene","ο ηθοποιός|actor","ο τραγουδιστής|singer","το κοινό|audience, public",
+"η θρησκεία|religion","ο Θεός|God","η πίστη|faith","η προσευχή|prayer","το μοναστήρι|monastery","ο ιερέας|priest","το έθιμο|custom","η τελετή|ceremony","η κηδεία|funeral","η βάφτιση|baptism",
+"δυστυχώς|unfortunately","ευτυχώς|fortunately","σίγουρα|certainly","ίσως|perhaps","μάλλον|probably, rather","ξαφνικά|suddenly","αμέσως|immediately","σχεδόν|almost","ακριβώς|exactly","τουλάχιστον|at least",
+"η τύχη|luck","η μοίρα|fate","το θαύμα|miracle","ο τρόπος|way, manner","η συμβουλή|advice"],
+B2:["η κυβέρνηση|government","η κοινωνία|society","η οικονομία|economy","η ανάπτυξη|development","το περιβάλλον|environment","η εκπαίδευση|education","η επιστήμη|science","η έρευνα|research","ο πολιτισμός|culture","η παράδοση|tradition",
+"η ελευθερία|freedom","η δικαιοσύνη|justice","ο νόμος|law","το δικαίωμα|right","το καθήκον|duty","η ευθύνη|responsibility","η ευκαιρία|opportunity","η πρόκληση|challenge","η επιτυχία|success","η αποτυχία|failure",
+"η επιρροή|influence","η σχέση|relationship","η συμπεριφορά|behavior","η γνώση|knowledge","ο σκοπός|purpose","η αξία|value","η αύξηση|growth, increase","η κρίση|crisis, judgment","η πολιτική|policy, politics","ο πολίτης|citizen",
+"πετυχαίνω|to achieve","βελτιώνω|to improve","αυξάνω|to increase","μειώνω|to reduce","αποφεύγω|to avoid","απαιτώ|to require, demand","υποστηρίζω|to support","αμφιβάλλω|to doubt","συγκρίνω|to compare","περιγράφω|to describe",
+"το κράτος|state","η δημοκρατία|democracy","οι εκλογές|elections","η ψήφος|vote","ο υποψήφιος|candidate","το κόμμα|political party","η βουλή|parliament","ο υπουργός|minister","ο πρωθυπουργός|prime minister","ο δήμαρχος|mayor",
+"ο πόλεμος|war","η ειρήνη|peace","ο στρατός|army","ο στρατιώτης|soldier","το όπλο|weapon","η μάχη|battle","η νίκη|victory","η συνθήκη|treaty, condition","ο σύμμαχος|ally","ο εχθρός|enemy",
+"ο προϋπολογισμός|budget","ο φόρος|tax","το χρέος|debt","το δάνειο|loan","ο τόκος|interest (finance)","η τράπεζα|bank","η επένδυση|investment","το κέρδος|profit","η ζημία|loss, damage","ο πληθωρισμός|inflation",
+"η ανεργία|unemployment","ο εργαζόμενος|employee","ο εργοδότης|employer","το συνδικάτο|trade union","η απεργία|strike","ο ανταγωνισμός|competition","η ζήτηση|demand","η παραγωγή|production","η κατανάλωση|consumption","η επιχείρηση|business, enterprise",
+"η μετανάστευση|migration","ο πρόσφυγας|refugee","τα σύνορα|border","η ιθαγένεια|citizenship","η ισότητα|equality","η ανισότητα|inequality","η φτώχεια|poverty","ο πλούτος|wealth","το χάσμα|gap, divide","η αλληλεγγύη|solidarity",
+"το επιχείρημα|argument","η άποψη|viewpoint","η κριτική|criticism, review","η αντίθεση|opposition, contrast","η αντίδραση|reaction","η διαμάχη|dispute","ο διάλογος|dialogue","η διαπραγμάτευση|negotiation","ο συμβιβασμός|compromise","η συμφωνία|agreement",
+"η υπόθεση|case, hypothesis","η θεωρία|theory","το πείραμα|experiment","το συμπέρασμα|conclusion","η ανάλυση|analysis","η μέθοδος|method","τα δεδομένα|data","η πηγή|source, spring","το ποσοστό|percentage","η στατιστική|statistics",
+"η εφεύρεση|invention","η ανακάλυψη|discovery","ο επιστήμονας|scientist","ο ερευνητής|researcher","το εργαστήριο|laboratory","η εξέλιξη|evolution, development","η καινοτομία|innovation","η τεχνητή νοημοσύνη|artificial intelligence","ο δορυφόρος|satellite","το διάστημα|space, interval",
+"η κοινή γνώμη|public opinion","τα μέσα ενημέρωσης|the media","ο δημοσιογράφος|journalist","το ρεπορτάζ|news report","η δήλωση|statement","η φήμη|rumor, reputation","η προπαγάνδα|propaganda","η λογοκρισία|censorship","η διαφάνεια|transparency","το σκάνδαλο|scandal",
+"αναφέρω|to mention, report","τονίζω|to emphasize","ισχυρίζομαι|to claim","αποδεικνύω|to prove","αναλύω|to analyze","εκτιμώ|to estimate, appreciate","υπολογίζω|to calculate","προβλέπω|to predict","διαπιστώνω|to ascertain","συμπεραίνω|to conclude",
+"εφαρμόζω|to apply, implement","καθορίζω|to determine","εξασφαλίζω|to secure, ensure","ενισχύω|to strengthen","περιορίζω|to limit","εμποδίζω|to prevent","επηρεάζω|to influence","προκαλώ|to provoke, cause","συμβάλλω|to contribute","αντιμετωπίζω|to face, deal with",
+"αναγνωρίζω|to recognize","αποδέχομαι|to accept (formally)","απορρίπτω|to reject","εγκρίνω|to approve","ψηφίζω|to vote","διαμαρτύρομαι|to protest","απειλώ|to threaten","προστατεύω|to protect","υπερασπίζομαι|to defend","τιμωρώ|to punish",
+"η δομή|structure","το σύστημα|system","ο θεσμός|institution","ο μηχανισμός|mechanism","η διαδικασία|process, procedure","το στάδιο|stage, phase","το επίπεδο|level","ο παράγοντας|factor","το στοιχείο|element, piece of data","η βάση|basis, base",
+"η προϋπόθεση|precondition","το κριτήριο|criterion","το κίνητρο|incentive, motive","η συνέπεια|consequence, consistency","η αιτία|cause","το όφελος|benefit","το κόστος|cost","το ρίσκο|risk","η πιθανότητα|probability","η βεβαιότητα|certainty",
+"η αμφιβολία|doubt (noun)","η άγνοια|ignorance","η σοφία|wisdom","η νοημοσύνη|intelligence","η φαντασία|imagination","η δημιουργικότητα|creativity","η έμπνευση|inspiration","η αντίληψη|perception","η συνείδηση|conscience, consciousness","η μνήμη|memory (faculty)",
+"ο χαρακτήρας|character","η προσωπικότητα|personality","η αυτοπεποίθηση|self-confidence","η φιλοδοξία|ambition","η αφοσίωση|devotion","η ακεραιότητα|integrity","η γενναιοδωρία|generosity","ο εγωισμός|selfishness","η ταπεινότητα|humility","η αξιοπρέπεια|dignity",
+"η ντροπή|shame","η ενοχή|guilt","η τύψη|remorse","η συμπόνια|compassion","η κατανόηση|understanding (noun)","ο σεβασμός|respect","η ανοχή|tolerance","η προκατάληψη|prejudice","το στερεότυπο|stereotype","η διάκριση|discrimination, distinction",
+"η θεραπεία|treatment, therapy","η ασθένεια|disease","το σύμπτωμα|symptom","η διάγνωση|diagnosis","το εμβόλιο|vaccine","η επέμβαση|operation, intervention","η πρόληψη|prevention","η ανάρρωση|recovery","ο ιός|virus","το μικρόβιο|germ",
+"η κληρονομιά|heritage, inheritance","ο αιώνας|century","η εποχή|era, season","η γενιά|generation","ο πρόγονος|ancestor","ο απόγονος|descendant","η επανάσταση|revolution","η αυτοκρατορία|empire","ο βασιλιάς|king","η βασίλισσα|queen",
+"το κείμενο|text","η παράγραφος|paragraph","η μετάφραση|translation","η έκφραση|expression","η μεταφορά|metaphor, transport","ο ορισμός|definition","η αφήγηση|narration","η πλοκή|plot","ο ήρωας|hero","το νόημα|meaning",
+"προφανώς|obviously","ενδεχομένως|possibly","κυρίως|mainly","ιδιαίτερα|especially","γενικά|generally","συγκεκριμένα|specifically","επομένως|therefore","αντίθετα|on the contrary","επιπλέον|moreover","εντούτοις|nevertheless",
+"απαραίτητος|necessary","σημαντικός|important","ασήμαντος|insignificant","ουσιαστικός|essential","επιφανειακός|superficial","πολύπλοκος|complex","σαφής|clear","ασαφής|vague","αντικειμενικός|objective","υποκειμενικός|subjective",
+"ικανός|capable","ανίκανος|incompetent","αποτελεσματικός|effective","επιτυχημένος|successful","διάσημος|famous","άγνωστος|unknown","μοναδικός|unique","συνηθισμένος|ordinary, usual","σπάνιος|rare","διαρκής|constant, lasting",
+"η ουσία|essence, substance","το ιδανικό|ideal","η πραγματικότητα|reality","η ψευδαίσθηση|illusion","το δίλημμα|dilemma"]};
+const ES_PRACTICE = {
+A1:["el agua|water","el pan|bread","la leche|milk","la casa|house","la puerta|door","la mesa|table","el día|day","la mañana|morning","la noche|night","el hombre|man","la mujer|woman","el niño|child","el amigo|friend","la madre|mother","el padre|father","el tiempo|time","el año|year","la mano|hand","el ojo|eye","la cabeza|head","el sol|sun","la luna|moon","el perro|dog","el gato|cat","el pez|fish","grande|big","pequeño|small","bueno|good","malo|bad","nuevo|new","viejo|old","caliente|hot","frío|cold","comer|to eat","beber|to drink","dormir|to sleep","ver|to see","hablar|to speak","amar|to love","trabajar|to work"],
+A2:["la tienda|shop","el dinero|money","el precio|price","el mercado|market","la ciudad|city","el pueblo|village","la calle|street","el coche|car","el tren|train","el billete|ticket","la comida|food","el desayuno|breakfast","la cena|dinner","la fruta|fruit","la verdura|vegetable","la carne|meat","el queso|cheese","el vino|wine","el clima|weather","la lluvia|rain","la nieve|snow","el viento|wind","el mar|sea","la montaña|mountain","el árbol|tree","la flor|flower","la familia|family","el hermano|brother","la hermana|sister","el médico|doctor","la escuela|school","el libro|book","la carta|letter","la palabra|word","la pregunta|question","la respuesta|answer","comprar|to buy","vender|to sell","abrir|to open","cerrar|to close"],
+B1:["la opinión|opinion","la experiencia|experience","la decisión|decision","el problema|problem","la razón|reason","el ejemplo|example","la historia|story","las noticias|news","la salud|health","el viaje|journey","las vacaciones|holiday","la reunión|meeting","el vecino|neighbor","el recuerdo|memory","el sueño|dream","la esperanza|hope","el miedo|fear","la alegría|joy","el error|mistake","la costumbre|habit","el futuro|future","el pasado|past","decidir|to decide","explicar|to explain","recordar|to remember","olvidar|to forget","prometer|to promise","preparar|to prepare","continuar|to continue","cambiar|to change","ayudar|to help","intentar|to try","encontrar|to find","perder|to lose","empezar|to begin","terminar|to finish","creer|to believe","entender|to understand","sentir|to feel","elegir|to choose"],
+B2:["el gobierno|government","la sociedad|society","la economía|economy","el desarrollo|development","el medio ambiente|environment","la educación|education","la ciencia|science","la investigación|research","la cultura|culture","la tradición|tradition","la libertad|freedom","la justicia|justice","la ley|law","el derecho|right","el deber|duty","la responsabilidad|responsibility","la oportunidad|opportunity","el desafío|challenge","el éxito|success","el fracaso|failure","la influencia|influence","la relación|relationship","el comportamiento|behavior","el conocimiento|knowledge","el propósito|purpose","el valor|value","el crecimiento|growth","la crisis|crisis","la política|policy","el ciudadano|citizen","lograr|to achieve","mejorar|to improve","aumentar|to increase","reducir|to reduce","evitar|to avoid","exigir|to require","apoyar|to support","dudar|to doubt","comparar|to compare","describir|to describe"]};
+const FR_PRACTICE = {
+A1:["l'eau|water","le pain|bread","le lait|milk","la maison|house","la porte|door","la table|table","le jour|day","le matin|morning","la nuit|night","l'homme|man","la femme|woman","l'enfant|child","l'ami|friend","la mère|mother","le père|father","le temps|time","l'année|year","la main|hand","l'œil|eye","la tête|head","le soleil|sun","la lune|moon","le chien|dog","le chat|cat","le poisson|fish","grand|big","petit|small","bon|good","mauvais|bad","nouveau|new","vieux|old","chaud|hot","froid|cold","manger|to eat","boire|to drink","dormir|to sleep","voir|to see","parler|to speak","aimer|to love","travailler|to work"],
+A2:["le magasin|shop","l'argent|money","le prix|price","le marché|market","la ville|city","le village|village","la rue|street","la voiture|car","le train|train","le billet|ticket","la nourriture|food","le petit-déjeuner|breakfast","le dîner|dinner","le fruit|fruit","le légume|vegetable","la viande|meat","le fromage|cheese","le vin|wine","la météo|weather","la pluie|rain","la neige|snow","le vent|wind","la mer|sea","la montagne|mountain","l'arbre|tree","la fleur|flower","la famille|family","le frère|brother","la sœur|sister","le médecin|doctor","l'école|school","le livre|book","la lettre|letter","le mot|word","la question|question","la réponse|answer","acheter|to buy","vendre|to sell","ouvrir|to open","fermer|to close"],
+B1:["l'avis|opinion","l'expérience|experience","la décision|decision","le problème|problem","la raison|reason","l'exemple|example","l'histoire|story","les nouvelles|news","la santé|health","le voyage|journey","les vacances|holiday","la réunion|meeting","le voisin|neighbor","le souvenir|memory","le rêve|dream","l'espoir|hope","la peur|fear","la joie|joy","l'erreur|mistake","l'habitude|habit","l'avenir|future","le passé|past","décider|to decide","expliquer|to explain","se rappeler|to remember","oublier|to forget","promettre|to promise","préparer|to prepare","continuer|to continue","changer|to change","aider|to help","essayer|to try","trouver|to find","perdre|to lose","commencer|to begin","finir|to finish","croire|to believe","comprendre|to understand","sentir|to feel","choisir|to choose"],
+B2:["le gouvernement|government","la société|society","l'économie|economy","le développement|development","l'environnement|environment","l'éducation|education","la science|science","la recherche|research","la culture|culture","la tradition|tradition","la liberté|freedom","la justice|justice","la loi|law","le droit|right","le devoir|duty","la responsabilité|responsibility","l'occasion|opportunity","le défi|challenge","le succès|success","l'échec|failure","l'influence|influence","la relation|relationship","le comportement|behavior","la connaissance|knowledge","le but|purpose","la valeur|value","la croissance|growth","la crise|crisis","la politique|policy","le citoyen|citizen","réussir|to achieve","améliorer|to improve","augmenter|to increase","réduire|to reduce","éviter|to avoid","exiger|to require","soutenir|to support","douter|to doubt","comparer|to compare","décrire|to describe"]};
+const IT_PRACTICE = {
+A1:["l'acqua|water","il pane|bread","il latte|milk","la casa|house","la porta|door","il tavolo|table","il giorno|day","la mattina|morning","la notte|night","l'uomo|man","la donna|woman","il bambino|child","l'amico|friend","la madre|mother","il padre|father","il tempo|time","l'anno|year","la mano|hand","l'occhio|eye","la testa|head","il sole|sun","la luna|moon","il cane|dog","il gatto|cat","il pesce|fish","grande|big","piccolo|small","buono|good","cattivo|bad","nuovo|new","vecchio|old","caldo|hot","freddo|cold","mangiare|to eat","bere|to drink","dormire|to sleep","vedere|to see","parlare|to speak","amare|to love","lavorare|to work"],
+A2:["il negozio|shop","i soldi|money","il prezzo|price","il mercato|market","la città|city","il paese|village","la strada|street","la macchina|car","il treno|train","il biglietto|ticket","il cibo|food","la colazione|breakfast","la cena|dinner","la frutta|fruit","la verdura|vegetable","la carne|meat","il formaggio|cheese","il vino|wine","il meteo|weather","la pioggia|rain","la neve|snow","il vento|wind","il mare|sea","la montagna|mountain","l'albero|tree","il fiore|flower","la famiglia|family","il fratello|brother","la sorella|sister","il medico|doctor","la scuola|school","il libro|book","la lettera|letter","la parola|word","la domanda|question","la risposta|answer","comprare|to buy","vendere|to sell","aprire|to open","chiudere|to close"],
+B1:["l'opinione|opinion","l'esperienza|experience","la decisione|decision","il problema|problem","la ragione|reason","l'esempio|example","la storia|story","le notizie|news","la salute|health","il viaggio|journey","le vacanze|holiday","la riunione|meeting","il vicino|neighbor","il ricordo|memory","il sogno|dream","la speranza|hope","la paura|fear","la gioia|joy","l'errore|mistake","l'abitudine|habit","il futuro|future","il passato|past","decidere|to decide","spiegare|to explain","ricordare|to remember","dimenticare|to forget","promettere|to promise","preparare|to prepare","continuare|to continue","cambiare|to change","aiutare|to help","provare|to try","trovare|to find","perdere|to lose","cominciare|to begin","finire|to finish","credere|to believe","capire|to understand","sentire|to feel","scegliere|to choose"],
+B2:["il governo|government","la società|society","l'economia|economy","lo sviluppo|development","l'ambiente|environment","l'istruzione|education","la scienza|science","la ricerca|research","la cultura|culture","la tradizione|tradition","la libertà|freedom","la giustizia|justice","la legge|law","il diritto|right","il dovere|duty","la responsabilità|responsibility","l'opportunità|opportunity","la sfida|challenge","il successo|success","il fallimento|failure","l'influenza|influence","la relazione|relationship","il comportamento|behavior","la conoscenza|knowledge","lo scopo|purpose","il valore|value","la crescita|growth","la crisi|crisis","la politica|policy","il cittadino|citizen","raggiungere|to achieve","migliorare|to improve","aumentare|to increase","ridurre|to reduce","evitare|to avoid","richiedere|to require","sostenere|to support","dubitare|to doubt","confrontare|to compare","descrivere|to describe"]};
+const DE_PRACTICE = {
+A1:["das Wasser|water","das Brot|bread","die Milch|milk","das Haus|house","die Tür|door","der Tisch|table","der Tag|day","der Morgen|morning","die Nacht|night","der Mann|man","die Frau|woman","das Kind|child","der Freund|friend","die Mutter|mother","der Vater|father","die Zeit|time","das Jahr|year","die Hand|hand","das Auge|eye","der Kopf|head","die Sonne|sun","der Mond|moon","der Hund|dog","die Katze|cat","der Fisch|fish","groß|big","klein|small","gut|good","schlecht|bad","neu|new","alt|old","heiß|hot","kalt|cold","essen|to eat","trinken|to drink","schlafen|to sleep","sehen|to see","sprechen|to speak","lieben|to love","arbeiten|to work"],
+A2:["das Geschäft|shop","das Geld|money","der Preis|price","der Markt|market","die Stadt|city","das Dorf|village","die Straße|street","das Auto|car","der Zug|train","die Fahrkarte|ticket","das Essen|food","das Frühstück|breakfast","das Abendessen|dinner","das Obst|fruit","das Gemüse|vegetable","das Fleisch|meat","der Käse|cheese","der Wein|wine","das Wetter|weather","der Regen|rain","der Schnee|snow","der Wind|wind","das Meer|sea","der Berg|mountain","der Baum|tree","die Blume|flower","die Familie|family","der Bruder|brother","die Schwester|sister","der Arzt|doctor","die Schule|school","das Buch|book","der Brief|letter","das Wort|word","die Frage|question","die Antwort|answer","kaufen|to buy","verkaufen|to sell","öffnen|to open","schließen|to close"],
+B1:["die Meinung|opinion","die Erfahrung|experience","die Entscheidung|decision","das Problem|problem","der Grund|reason","das Beispiel|example","die Geschichte|story","die Nachrichten|news","die Gesundheit|health","die Reise|journey","der Urlaub|holiday","das Treffen|meeting","der Nachbar|neighbor","die Erinnerung|memory","der Traum|dream","die Hoffnung|hope","die Angst|fear","die Freude|joy","der Fehler|mistake","die Gewohnheit|habit","die Zukunft|future","die Vergangenheit|past","entscheiden|to decide","erklären|to explain","sich erinnern|to remember","vergessen|to forget","versprechen|to promise","vorbereiten|to prepare","fortsetzen|to continue","ändern|to change","helfen|to help","versuchen|to try","finden|to find","verlieren|to lose","anfangen|to begin","beenden|to finish","glauben|to believe","verstehen|to understand","fühlen|to feel","wählen|to choose"],
+B2:["die Regierung|government","die Gesellschaft|society","die Wirtschaft|economy","die Entwicklung|development","die Umwelt|environment","die Bildung|education","die Wissenschaft|science","die Forschung|research","die Kultur|culture","die Tradition|tradition","die Freiheit|freedom","die Gerechtigkeit|justice","das Gesetz|law","das Recht|right","die Pflicht|duty","die Verantwortung|responsibility","die Gelegenheit|opportunity","die Herausforderung|challenge","der Erfolg|success","der Misserfolg|failure","der Einfluss|influence","die Beziehung|relationship","das Verhalten|behavior","das Wissen|knowledge","der Zweck|purpose","der Wert|value","das Wachstum|growth","die Krise|crisis","die Politik|policy","der Bürger|citizen","erreichen|to achieve","verbessern|to improve","erhöhen|to increase","verringern|to reduce","vermeiden|to avoid","verlangen|to require","unterstützen|to support","zweifeln|to doubt","vergleichen|to compare","beschreiben|to describe"]};
+const PT_PRACTICE = {
+A1:["a água|water","o pão|bread","o leite|milk","a casa|house","a porta|door","a mesa|table","o dia|day","a manhã|morning","a noite|night","o homem|man","a mulher|woman","a criança|child","o amigo|friend","a mãe|mother","o pai|father","o tempo|time","o ano|year","a mão|hand","o olho|eye","a cabeça|head","o sol|sun","a lua|moon","o cão|dog","o gato|cat","o peixe|fish","grande|big","pequeno|small","bom|good","mau|bad","novo|new","velho|old","quente|hot","frio|cold","comer|to eat","beber|to drink","dormir|to sleep","ver|to see","falar|to speak","amar|to love","trabalhar|to work"],
+A2:["a loja|shop","o dinheiro|money","o preço|price","o mercado|market","a cidade|city","a aldeia|village","a rua|street","o carro|car","o comboio|train","o bilhete|ticket","a comida|food","o pequeno-almoço|breakfast","o jantar|dinner","a fruta|fruit","o legume|vegetable","a carne|meat","o queijo|cheese","o vinho|wine","o clima|weather","a chuva|rain","a neve|snow","o vento|wind","o mar|sea","a montanha|mountain","a árvore|tree","a flor|flower","a família|family","o irmão|brother","a irmã|sister","o médico|doctor","a escola|school","o livro|book","a carta|letter","a palavra|word","a pergunta|question","a resposta|answer","comprar|to buy","vender|to sell","abrir|to open","fechar|to close"],
+B1:["a opinião|opinion","a experiência|experience","a decisão|decision","o problema|problem","a razão|reason","o exemplo|example","a história|story","as notícias|news","a saúde|health","a viagem|journey","as férias|holiday","a reunião|meeting","o vizinho|neighbor","a lembrança|memory","o sonho|dream","a esperança|hope","o medo|fear","a alegria|joy","o erro|mistake","o hábito|habit","o futuro|future","o passado|past","decidir|to decide","explicar|to explain","lembrar|to remember","esquecer|to forget","prometer|to promise","preparar|to prepare","continuar|to continue","mudar|to change","ajudar|to help","tentar|to try","encontrar|to find","perder|to lose","começar|to begin","terminar|to finish","acreditar|to believe","entender|to understand","sentir|to feel","escolher|to choose"],
+B2:["o governo|government","a sociedade|society","a economia|economy","o desenvolvimento|development","o ambiente|environment","a educação|education","a ciência|science","a investigação|research","a cultura|culture","a tradição|tradition","a liberdade|freedom","a justiça|justice","a lei|law","o direito|right","o dever|duty","a responsabilidade|responsibility","a oportunidade|opportunity","o desafio|challenge","o sucesso|success","o fracasso|failure","a influência|influence","a relação|relationship","o comportamento|behavior","o conhecimento|knowledge","o propósito|purpose","o valor|value","o crescimento|growth","a crise|crisis","a política|policy","o cidadão|citizen","alcançar|to achieve","melhorar|to improve","aumentar|to increase","reduzir|to reduce","evitar|to avoid","exigir|to require","apoiar|to support","duvidar|to doubt","comparar|to compare","descrever|to describe"]};
+const RU_PRACTICE = {
+A1:["вода|water","хлеб|bread","молоко|milk","дом|house","дверь|door","стол|table","день|day","утро|morning","ночь|night","мужчина|man","женщина|woman","ребёнок|child","друг|friend","мать|mother","отец|father","время|time","год|year","рука|hand","глаз|eye","голова|head","солнце|sun","луна|moon","собака|dog","кошка|cat","рыба|fish","большой|big","маленький|small","хороший|good","плохой|bad","новый|new","старый|old","горячий|hot","холодный|cold","есть|to eat","пить|to drink","спать|to sleep","видеть|to see","говорить|to speak","любить|to love","работать|to work"],
+A2:["магазин|shop","деньги|money","цена|price","рынок|market","город|city","деревня|village","улица|street","машина|car","поезд|train","билет|ticket","еда|food","завтрак|breakfast","ужин|dinner","фрукт|fruit","овощ|vegetable","мясо|meat","сыр|cheese","вино|wine","погода|weather","дождь|rain","снег|snow","ветер|wind","море|sea","гора|mountain","дерево|tree","цветок|flower","семья|family","брат|brother","сестра|sister","врач|doctor","школа|school","книга|book","письмо|letter","слово|word","вопрос|question","ответ|answer","покупать|to buy","продавать|to sell","открывать|to open","закрывать|to close"],
+B1:["мнение|opinion","опыт|experience","решение|decision","проблема|problem","причина|reason","пример|example","история|story","новости|news","здоровье|health","путешествие|journey","отпуск|holiday","встреча|meeting","сосед|neighbor","воспоминание|memory","мечта|dream","надежда|hope","страх|fear","радость|joy","ошибка|mistake","привычка|habit","будущее|future","прошлое|past","решать|to decide","объяснять|to explain","помнить|to remember","забывать|to forget","обещать|to promise","готовить|to prepare","продолжать|to continue","менять|to change","помогать|to help","пытаться|to try","находить|to find","терять|to lose","начинать|to begin","заканчивать|to finish","верить|to believe","понимать|to understand","чувствовать|to feel","выбирать|to choose"],
+B2:["правительство|government","общество|society","экономика|economy","развитие|development","окружающая среда|environment","образование|education","наука|science","исследование|research","культура|culture","традиция|tradition","свобода|freedom","справедливость|justice","закон|law","право|right","долг|duty","ответственность|responsibility","возможность|opportunity","вызов|challenge","успех|success","неудача|failure","влияние|influence","отношение|relationship","поведение|behavior","знание|knowledge","цель|purpose","ценность|value","рост|growth","кризис|crisis","политика|policy","гражданин|citizen","достигать|to achieve","улучшать|to improve","увеличивать|to increase","уменьшать|to reduce","избегать|to avoid","требовать|to require","поддерживать|to support","сомневаться|to doubt","сравнивать|to compare","описывать|to describe"]};
+const PL_PRACTICE = {
+A1:["woda|water","chleb|bread","mleko|milk","dom|house","drzwi|door","stół|table","dzień|day","poranek|morning","noc|night","mężczyzna|man","kobieta|woman","dziecko|child","przyjaciel|friend","matka|mother","ojciec|father","czas|time","rok|year","ręka|hand","oko|eye","głowa|head","słońce|sun","księżyc|moon","pies|dog","kot|cat","ryba|fish","duży|big","mały|small","dobry|good","zły|bad","nowy|new","stary|old","gorący|hot","zimny|cold","jeść|to eat","pić|to drink","spać|to sleep","widzieć|to see","mówić|to speak","kochać|to love","pracować|to work"],
+A2:["sklep|shop","pieniądze|money","cena|price","targ|market","miasto|city","wieś|village","ulica|street","samochód|car","pociąg|train","bilet|ticket","jedzenie|food","śniadanie|breakfast","kolacja|dinner","owoc|fruit","warzywo|vegetable","mięso|meat","ser|cheese","wino|wine","pogoda|weather","deszcz|rain","śnieg|snow","wiatr|wind","morze|sea","góra|mountain","drzewo|tree","kwiat|flower","rodzina|family","brat|brother","siostra|sister","lekarz|doctor","szkoła|school","książka|book","list|letter","słowo|word","pytanie|question","odpowiedź|answer","kupować|to buy","sprzedawać|to sell","otwierać|to open","zamykać|to close"],
+B1:["opinia|opinion","doświadczenie|experience","decyzja|decision","problem|problem","powód|reason","przykład|example","historia|story","wiadomości|news","zdrowie|health","podróż|journey","wakacje|holiday","spotkanie|meeting","sąsiad|neighbor","wspomnienie|memory","marzenie|dream","nadzieja|hope","strach|fear","radość|joy","błąd|mistake","zwyczaj|habit","przyszłość|future","przeszłość|past","decydować|to decide","wyjaśniać|to explain","pamiętać|to remember","zapominać|to forget","obiecywać|to promise","przygotowywać|to prepare","kontynuować|to continue","zmieniać|to change","pomagać|to help","próbować|to try","znajdować|to find","tracić|to lose","zaczynać|to begin","kończyć|to finish","wierzyć|to believe","rozumieć|to understand","czuć|to feel","wybierać|to choose"],
+B2:["rząd|government","społeczeństwo|society","gospodarka|economy","rozwój|development","środowisko|environment","edukacja|education","nauka|science","badanie|research","kultura|culture","tradycja|tradition","wolność|freedom","sprawiedliwość|justice","prawo|law","pokój|peace","obowiązek|duty","odpowiedzialność|responsibility","szansa|opportunity","wyzwanie|challenge","sukces|success","porażka|failure","wpływ|influence","relacja|relationship","zachowanie|behavior","wiedza|knowledge","cel|purpose","wartość|value","wzrost|growth","kryzys|crisis","polityka|policy","obywatel|citizen","osiągać|to achieve","poprawiać|to improve","zwiększać|to increase","zmniejszać|to reduce","unikać|to avoid","wymagać|to require","wspierać|to support","wątpić|to doubt","porównywać|to compare","opisywać|to describe"]};
+const UK_PRACTICE = {
+A1:["вода|water","хліб|bread","молоко|milk","дім|house","двері|door","стіл|table","день|day","ранок|morning","ніч|night","чоловік|man","жінка|woman","дитина|child","друг|friend","мати|mother","батько|father","час|time","рік|year","рука|hand","око|eye","голова|head","сонце|sun","місяць|moon","собака|dog","кіт|cat","риба|fish","великий|big","малий|small","добрий|good","поганий|bad","новий|new","старий|old","гарячий|hot","холодний|cold","їсти|to eat","пити|to drink","спати|to sleep","бачити|to see","говорити|to speak","любити|to love","працювати|to work"],
+A2:["магазин|shop","гроші|money","ціна|price","ринок|market","місто|city","село|village","вулиця|street","машина|car","потяг|train","квиток|ticket","їжа|food","сніданок|breakfast","вечеря|dinner","фрукт|fruit","овоч|vegetable","м'ясо|meat","сир|cheese","вино|wine","погода|weather","дощ|rain","сніг|snow","вітер|wind","море|sea","гора|mountain","дерево|tree","квітка|flower","сім'я|family","брат|brother","сестра|sister","лікар|doctor","школа|school","книга|book","лист|letter","слово|word","питання|question","відповідь|answer","купувати|to buy","продавати|to sell","відкривати|to open","закривати|to close"],
+B1:["думка|opinion","досвід|experience","рішення|decision","проблема|problem","причина|reason","приклад|example","історія|story","новини|news","здоров'я|health","подорож|journey","відпустка|holiday","зустріч|meeting","сусід|neighbor","спогад|memory","мрія|dream","надія|hope","страх|fear","радість|joy","помилка|mistake","звичка|habit","майбутнє|future","минуле|past","вирішувати|to decide","пояснювати|to explain","пам'ятати|to remember","забувати|to forget","обіцяти|to promise","готувати|to prepare","продовжувати|to continue","змінювати|to change","допомагати|to help","намагатися|to try","знаходити|to find","втрачати|to lose","починати|to begin","закінчувати|to finish","вірити|to believe","розуміти|to understand","відчувати|to feel","вибирати|to choose"],
+B2:["уряд|government","суспільство|society","економіка|economy","розвиток|development","довкілля|environment","освіта|education","наука|science","дослідження|research","культура|culture","традиція|tradition","свобода|freedom","справедливість|justice","закон|law","право|right","обов'язок|duty","відповідальність|responsibility","можливість|opportunity","виклик|challenge","успіх|success","невдача|failure","вплив|influence","стосунки|relationship","поведінка|behavior","знання|knowledge","мета|purpose","цінність|value","зростання|growth","криза|crisis","політика|policy","громадянин|citizen","досягати|to achieve","покращувати|to improve","збільшувати|to increase","зменшувати|to reduce","уникати|to avoid","вимагати|to require","підтримувати|to support","сумніватися|to doubt","порівнювати|to compare","описувати|to describe"]};
+
 // ═══ LANGUAGE PACKS ═══
 // Each pack bundles everything language-specific: display name, TTS voice code,
 // function-word glossary, bundled passages, level specs, and an offline stemmer.
@@ -698,22 +848,22 @@ const PACKS = {
     voicePrefix: "el", voiceLang: "el-GR",
     hasArticles: true,                 // affects gloss prompt wording ("lemma with article")
     fillers: "λοιπόν, έλα, ρε συ, ας πούμε, καλέ, βρε",
-    core: EL_CORE, bundled: EL_BUNDLED, levelSpecs: EL_LEVEL_SPECS, stem: elStem
+    core: EL_CORE, bundled: EL_BUNDLED, levelSpecs: EL_LEVEL_SPECS, stem: elStem, practice: EL_PRACTICE
   },
-  es: { code:"es", name:"Spanish",    native:"Español",    voicePrefix:"es", voiceLang:"es-ES", hasArticles:true, fillers:"pues, bueno, oye, vale, o sea, anda, venga", core:ES_CORE, bundled:ES_BUNDLED, levelSpecs:ES_LEVEL_SPECS },
-  fr: { code:"fr", name:"French",     native:"Français",   voicePrefix:"fr", voiceLang:"fr-FR", hasArticles:true, fillers:"ben, bah, écoute, dis donc, quoi, bref, allez", core:FR_CORE, bundled:FR_BUNDLED, levelSpecs:FR_LEVEL_SPECS },
-  it: { code:"it", name:"Italian",    native:"Italiano",   voicePrefix:"it", voiceLang:"it-IT", hasArticles:true, fillers:"beh, dai, allora, guarda, insomma, cioè, ma va", core:IT_CORE, bundled:IT_BUNDLED, levelSpecs:IT_LEVEL_SPECS },
-  de: { code:"de", name:"German",     native:"Deutsch",    voicePrefix:"de", voiceLang:"de-DE", hasArticles:true, fillers:"na, halt, eben, ach so, komm, echt, na ja", core:DE_CORE, bundled:DE_BUNDLED, levelSpecs:DE_LEVEL_SPECS },
-  pt: { code:"pt", name:"Portuguese", native:"Português",  voicePrefix:"pt", voiceLang:"pt-PT", hasArticles:true, fillers:"pois, olha, então, pá, pronto, ora, está bem", core:PT_CORE, bundled:PT_BUNDLED, levelSpecs:PT_LEVEL_SPECS },
+  es: { code:"es", name:"Spanish",    native:"Español",    voicePrefix:"es", voiceLang:"es-ES", hasArticles:true, fillers:"pues, bueno, oye, vale, o sea, anda, venga", core:ES_CORE, bundled:ES_BUNDLED, levelSpecs:ES_LEVEL_SPECS, practice:ES_PRACTICE },
+  fr: { code:"fr", name:"French",     native:"Français",   voicePrefix:"fr", voiceLang:"fr-FR", hasArticles:true, fillers:"ben, bah, écoute, dis donc, quoi, bref, allez", core:FR_CORE, bundled:FR_BUNDLED, levelSpecs:FR_LEVEL_SPECS, practice:FR_PRACTICE },
+  it: { code:"it", name:"Italian",    native:"Italiano",   voicePrefix:"it", voiceLang:"it-IT", hasArticles:true, fillers:"beh, dai, allora, guarda, insomma, cioè, ma va", core:IT_CORE, bundled:IT_BUNDLED, levelSpecs:IT_LEVEL_SPECS, practice:IT_PRACTICE },
+  de: { code:"de", name:"German",     native:"Deutsch",    voicePrefix:"de", voiceLang:"de-DE", hasArticles:true, fillers:"na, halt, eben, ach so, komm, echt, na ja", core:DE_CORE, bundled:DE_BUNDLED, levelSpecs:DE_LEVEL_SPECS, practice:DE_PRACTICE },
+  pt: { code:"pt", name:"Portuguese", native:"Português",  voicePrefix:"pt", voiceLang:"pt-PT", hasArticles:true, fillers:"pois, olha, então, pá, pronto, ora, está bem", core:PT_CORE, bundled:PT_BUNDLED, levelSpecs:PT_LEVEL_SPECS, practice:PT_PRACTICE },
   ru: { code:"ru", name:"Russian",    native:"Русский",    voicePrefix:"ru", voiceLang:"ru-RU", hasArticles:false, fillers:"ну, вот, же, слушай, ладно, кстати, давай",
         glossExtra:"For verbs, give the lemma in the aspect used in the text and note its aspect partner (e.g. pf.; impf. покупать).",
-        core:RU_CORE, bundled:RU_BUNDLED, levelSpecs:RU_LEVEL_SPECS, stem:ruStem },
+        core:RU_CORE, bundled:RU_BUNDLED, levelSpecs:RU_LEVEL_SPECS, stem:ruStem, practice:RU_PRACTICE },
   pl: { code:"pl", name:"Polish",     native:"Polski",     voicePrefix:"pl", voiceLang:"pl-PL", hasArticles:false, fillers:"no, właśnie, słuchaj, wiesz, dobra, przecież, w ogóle",
         glossExtra:"For verbs, give the lemma in the aspect used in the text and note its aspect partner (e.g. pf.; impf. kupować).",
-        core:PL_CORE, bundled:PL_BUNDLED, levelSpecs:PL_LEVEL_SPECS, stem:plStem },
+        core:PL_CORE, bundled:PL_BUNDLED, levelSpecs:PL_LEVEL_SPECS, stem:plStem, practice:PL_PRACTICE },
   uk: { code:"uk", name:"Ukrainian",  native:"Українська", voicePrefix:"uk", voiceLang:"uk-UA", hasArticles:false, fillers:"ну, от, слухай, до речі, добре, давай, же",
         glossExtra:"For verbs, give the lemma in the aspect used in the text and note its aspect partner (e.g. pf.; impf. купувати).",
-        core:UK_CORE, bundled:UK_BUNDLED, levelSpecs:UK_LEVEL_SPECS, stem:ukStem }
+        core:UK_CORE, bundled:UK_BUNDLED, levelSpecs:UK_LEVEL_SPECS, stem:ukStem, practice:UK_PRACTICE }
 };
 function activeLang(){ return (settings && settings.lang) || "el"; }
 function activePack(){ return PACKS[activeLang()] || PACKS.el; }
@@ -872,6 +1022,79 @@ function answer(g){
 }
 function delCard(id){ deck = deck.filter(c=>c.id!==id); save(LS.deck, deck); render(); }
 
+// ── Word practice drill ──
+function practiceTier(){ return settings.practiceTier || "A1"; }
+function practiceDir(){ return settings.practiceDir || "target"; }   // target-first | english-first
+function practicePool(){
+  const base = (activePack().practice || {})[practiceTier()] || [];
+  const extra = practiceExtra[activeLang()+":"+practiceTier()] || [];
+  if(!extra.length) return base;
+  const seen = new Set(base.map(e=>e.split("|")[0].toLowerCase()));
+  const out = base.slice();
+  for(const e of extra){ const s = String(e).split("|")[0].toLowerCase(); if(s && !seen.has(s)){ seen.add(s); out.push(e); } }
+  return out;
+}
+// Grow the current tier with AI: 50 new level-appropriate words, deduped and cached offline.
+async function expandPractice(){
+  if(practiceBusy) return;
+  if(!settings.apiKey){ practiceMsg = "Add an AI provider key in Settings first (tap \"How this works\")."; render(); return; }
+  if(!navigator.onLine){ practiceMsg = "You're offline — growing the set needs internet."; render(); return; }
+  practiceBusy = true; practiceMsg = "Asking the AI for 50 new " + practiceTier() + " words…"; render();
+  const L = langName(), tier = practiceTier();
+  const have = practicePool().map(e=>e.split("|")[0]);
+  const prompt = `You are building a graded vocabulary drill for a ${L} learner at CEFR level ${tier}. Suggest 50 NEW high-frequency, genuinely useful ${L} words appropriate for exactly this level — single dictionary items (an occasional fixed two-word phrase is fine), no proper nouns. ${langHasArticles()?"Nouns must include their article. ":""}${activePack().glossExtra?activePack().glossExtra+" ":""}Do NOT repeat any of these existing words: ${have.join(", ")}.
+Respond ONLY with valid JSON, no markdown: [["${L} word","concise English translation"],...]`;
+  try{
+    const raw = await callAI(prompt, 3000);
+    const arr = parseAIJSON(raw);
+    if(!Array.isArray(arr)) throw new Error("unexpected response shape");
+    const key = activeLang()+":"+tier;
+    const cur = practiceExtra[key] || [];
+    const seen = new Set(have.map(s=>s.toLowerCase()));
+    for(const it of cur) seen.add(String(it).split("|")[0].toLowerCase());
+    let added = 0;
+    for(const it of arr){
+      if(!Array.isArray(it) || !it[0] || !it[1]) continue;
+      const w = String(it[0]).trim(), t = String(it[1]).trim();
+      if(!w || !t || seen.has(w.toLowerCase())) continue;
+      seen.add(w.toLowerCase()); cur.push(w+"|"+t); added++;
+    }
+    practiceExtra[key] = cur; save(LS.practiceX, practiceExtra);
+    practiceMsg = added ? `Added ${added} new words — cached on this device for offline practice.` : "No new words came back — try again.";
+  }catch(e){ practiceMsg = "Couldn't grow the set: " + e.message; }
+  practiceBusy = false; render();
+}
+window.expandPractice = expandPractice;
+function nextPractice(){
+  const pool = practicePool();
+  if(!pool.length){ practiceWord = null; render(); return; }
+  let pick, tries = 0;
+  do { pick = pool[Math.floor(Math.random()*pool.length)]; tries++; } while(practiceHist.includes(pick) && tries < 25);
+  practiceHist.push(pick); if(practiceHist.length > 6) practiceHist.shift();
+  const [w, t] = pick.split("|");
+  practiceWord = { word:w, translation:t }; practiceRevealed = false;
+  render();
+  if(practiceDir() === "target") speakText(w, wordRate());   // hear it before guessing the meaning
+}
+window.practiceNext = nextPractice;
+window.practiceReveal = () => {
+  practiceRevealed = true; render();
+  if(practiceDir() !== "target" && practiceWord) speakText(practiceWord.word, wordRate());  // reveal = first hearing
+};
+window.setPracticeTier = t => { settings.practiceTier = t; save(LS.settings, settings);
+  practiceWord = null; practiceRevealed = false; practiceHist = []; practiceMsg = ""; render(); };
+window.setPracticeDir = d => { settings.practiceDir = d; save(LS.settings, settings);
+  practiceWord = null; practiceRevealed = false; practiceMsg = ""; render(); };
+window.practiceSave = () => {
+  const p = practiceWord; if(!p || p.saved) return;
+  const bare = p.word.toLowerCase().split(" ").pop();   // bare form without article, for reader highlighting
+  const ex = deck.find(c => inActiveLang(c) && c.lemma.toLowerCase() === p.word.toLowerCase());
+  if(!ex) deck.push({ id:Date.now(), lemma:p.word, translation:p.translation, note:"", lang:activeLang(),
+    context:"", forms:[...new Set([p.word.toLowerCase(), bare])], due:Date.now(), interval:0, ease:2.5, reps:0, added:Date.now() });
+  save(LS.deck, deck);
+  practiceWord.saved = true; render();
+};
+
 // ── Rendering ──
 const $ = id => document.getElementById(id);
 function esc(s){ return String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
@@ -965,7 +1188,7 @@ function render(){
   $("netStatus").textContent = activePack().native + " · " + (navigator.onLine ? (settings.apiKey ? "ONLINE · AI READY" : "ONLINE · OFFLINE LIBRARY") : "OFFLINE MODE") + " · " + APP_VERSION;
 
   const due = dueCards().length;
-  $("tabs").innerHTML = [["read","Read"],["review",`Review${due?` (${due})`:""}`],["words","My words"],["settings","⚙ Settings"]]
+  $("tabs").innerHTML = [["read","Read"],["review",`Review${due?` (${due})`:""}`],["practice","Practice"],["words","My words"],["settings","⚙ Settings"]]
     .map(([id,l]) => `<button class="chip${tab===id?" on":""}" onclick="setTab('${id}')">${l}</button>`).join("");
 
   let html = "";
@@ -1118,6 +1341,58 @@ function render(){
     }
   }
 
+  if(tab==="practice"){
+    const pool = practicePool();
+    const dir = practiceDir();
+    const tierLabels = { A1:"A1 · Essentials", A2:"A2 · Everyday", B1:"B1 · Intermediate", B2:"B2 · Advanced" };
+    html += `<div class="card" style="padding:14px 16px;">
+      <div class="row"><div class="muted">Difficulty</div>
+        <button class="btn sec" style="padding:5px 10px;font-size:12px;flex-shrink:0;" onclick="showCefrHelp()">Levels?</button></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+        ${["A1","A2","B1","B2"].map(t=>`<button class="chip${practiceTier()===t?" on":""}" onclick="setPracticeTier('${t}')">${tierLabels[t]}</button>`).join("")}
+      </div>
+      <div class="muted" style="margin:12px 0 0;">Direction</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+        <button class="chip${dir==="target"?" on":""}" onclick="setPracticeDir('target')">${esc(langName())} → English</button>
+        <button class="chip${dir==="english"?" on":""}" onclick="setPracticeDir('english')">English → ${esc(langName())}</button>
+      </div>
+      <div class="row" style="margin-top:14px;">
+        <div class="muted">${pool.length} words in this set${(practiceExtra[activeLang()+":"+practiceTier()]||[]).length?` · ${(practiceExtra[activeLang()+":"+practiceTier()]||[]).length} grown by AI`:""}</div>
+        <button class="btn sec" style="padding:6px 12px;font-size:13px;flex-shrink:0;" onclick="expandPractice()" ${practiceBusy?"disabled":""}>${practiceBusy?"…":"＋ Grow with AI"}</button>
+      </div>
+      ${practiceMsg?`<div class="muted" style="margin-top:6px;color:#8A6D1F;">${esc(practiceMsg)}</div>`:""}
+    </div>`;
+    if(!practiceWord){
+      html += `<div class="card" style="text-align:center;padding:36px;">
+        <div class="display" style="font-size:24px;color:#1E3A5C;">Word practice</div>
+        <div class="muted" style="margin-top:8px;line-height:1.6;">${pool.length} words in this set.${dir==="target"
+          ? " Each word is spoken aloud — guess the meaning, then reveal."
+          : ` You get the English — recall it in ${esc(langName())}, then reveal to check and hear it.`}</div>
+        <button class="btn" style="margin-top:18px;" onclick="practiceNext()">Give me a word</button>
+      </div>`;
+    } else {
+      const w = practiceWord;
+      const speakBtn = `<button style="background:none;border:none;font-size:22px;cursor:pointer;" onclick="speak('${esc(w.word).replace(/'/g,"\\'")}',0.85)">🔊</button>`;
+      const front = dir==="target"
+        ? `<div class="row"><div class="display" style="font-size:34px;color:#1E3A5C;">${esc(w.word)}</div>${speakBtn}</div>`
+        : `<div style="font-size:26px;font-weight:600;color:#1E3A5C;">${esc(w.translation)}</div>`;
+      const back = dir==="target"
+        ? `<div style="font-size:20px;font-weight:700;">${esc(w.translation)}</div>`
+        : `<div class="row"><div class="display" style="font-size:30px;color:#1E3A5C;">${esc(w.word)}</div>${speakBtn}</div>`;
+      html += `<div class="card" style="min-height:220px;display:flex;flex-direction:column;">
+        <div style="flex:1;">${front}
+          ${practiceRevealed?`<div style="margin-top:14px;border-top:1px solid #E5E1D8;padding-top:14px;">${back}
+            <button class="btn sec" style="margin-top:14px;width:100%;${w.saved?'border-color:#3E7C4F;color:#3E7C4F;':''}" onclick="practiceSave()" ${w.saved?'disabled':''}>${w.saved?"✓ In your review deck":"+ Add to my review deck"}</button>
+          </div>`:""}
+        </div>
+        ${!practiceRevealed
+          ? `<button class="btn" style="margin-top:16px;" onclick="practiceReveal()">Show answer</button>`
+          : `<button class="btn" style="margin-top:16px;" onclick="practiceNext()">Next word →</button>`}
+      </div>
+      <div class="muted" style="margin-top:10px;text-align:center;">Words you add here join the spaced-repetition Review tab.</div>`;
+    }
+  }
+
   if(tab==="words"){
     const myWords = deck.filter(inActiveLang);
     if(myWords.length===0) html += `<div class="card" style="text-align:center;color:#6B7683;">No words yet — tap words while reading to collect them.</div>`;
@@ -1235,6 +1510,7 @@ window.setLang = code => {
   // show other-language content. Data stays scoped per-language via v15 filters.
   try{ if(window.speechSynthesis) speechSynthesis.cancel(); }catch(e){}
   activeP = null; player = { pid:null, title:"", sentences:[], idx:0, playing:false, token:player.token+1 };
+  practiceWord = null; practiceRevealed = false; practiceHist = []; practiceMsg = "";
   tab = "read";
   render();
 };
