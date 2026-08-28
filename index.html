@@ -67,7 +67,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = "v22";
+const APP_VERSION = "v23";
 const SPEEDS = { fast: 0.92, medium: 0.69, slow: 0.52 };
 function curRate(){ return SPEEDS[settings.speed] || SPEEDS.fast; }
 function wordRate(){ return curRate() * 0.9; }
@@ -259,7 +259,28 @@ function speakText(text, rate, onend, keepQueue){
   }catch(e){ console.error(e); if(onend) onend(); }
 }
 
-function splitSentences(t){ return t.split(/(?:(?<=[.;!?·…])\s+|\n+)/).filter(s=>s && s.trim()); }
+// Repair text the model may have returned with escaped or inconsistent line breaks, so dialogue
+// splits into real utterances. Runs on read, which also fixes passages saved by earlier versions.
+function normalizeText(t){
+  return String(t||"")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\\r\\n|\\n|\\r/g, "\n")      // literal backslash-n that never became a newline
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+\n/g, "\n")                // trailing spaces before a break
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/^[ \t]*[-–‒―]{1,2}[ \t]+/gm, "— ")  // normalize speaker dashes to a real em-dash
+    .trim();
+}
+function splitSentences(t){ return normalizeText(t).split(/(?:(?<=[.;!?·…])\s+|\n+)/).filter(s=>s && s.trim()); }
+// What the TTS engine actually receives: drop the speaker dash and any stray separators, which
+// voices otherwise announce ("dash") or choke on. Display keeps the dash.
+function speechText(s){
+  return String(s||"")
+    .replace(/^[\s]*[—–‒―-]+[\s]*/, "")        // leading speaker dash
+    .replace(/[—–‒―-]+\s*$/, "")                // trailing dash
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 function highlightSentence(si){
   document.querySelectorAll(".sentence.active").forEach(e=>e.classList.remove("active"));
@@ -274,8 +295,9 @@ function speakChain(){
   if(player.idx >= player.sentences.length){ player.playing=false; player.idx=0; highlightSentence(null);
     if(player.pid){ listened.add(player.pid); save(LS.listened, [...listened]); } render(); return; }
   const myIdx = player.idx;
+  if(!speechText(player.sentences[myIdx])){ player.idx = myIdx + 1; speakChain(); return; }  // nothing sayable — skip
   highlightSentence(myIdx);                              // karaoke: mark the sentence being read
-  speakText(player.sentences[myIdx], curRate(), () => {
+  speakText(speechText(player.sentences[myIdx]), curRate(), () => {
     if(player.token !== tk || !player.playing) return;   // cancelled or paused
     if(player.idx !== myIdx) return;                     // duplicate event — already advanced
     player.idx = myIdx + 1;
@@ -963,7 +985,7 @@ async function generateAndCache(topic){
 
 Write a ${L} ${isDlg ? "dialogue" : "passage"} on: "${topic}".${isDlg ? `
 
-Format it as a natural spoken conversation between two people. Each utterance goes on its own line, starting with an em-dash (—). Use genuinely colloquial SPOKEN ${L} — the fillers, interjections and particles real speakers use${activePack().fillers?` (${activePack().fillers})`:""} suited to the level — not written-register ${L}. Include the small conversational moves: greetings, reacting, agreeing, teasing, changing subject.` : ""}${(due.length && !["A1","A2"].includes(settings.level)) ? ` Where natural, include some of these study words: ${due.join(", ")}.` : ""}
+Format it as a natural spoken conversation between two people. Each utterance goes on its own line, starting with an em-dash (—) followed by a single space. Inside the JSON "text" value, separate the lines with the two-character JSON escape \\n — do NOT emit real line breaks inside the string, and do NOT write the characters backslash-n twice or use \\r. Do not add speaker names, labels, quotation marks, markdown, or any bullet characters. End every utterance with normal sentence punctuation, and never leave a dash or semicolon dangling at the end of a line. Use genuinely colloquial SPOKEN ${L} — the fillers, interjections and particles real speakers use${activePack().fillers?` (${activePack().fillers})`:""} suited to the level — not written-register ${L}. Include the small conversational moves: greetings, reacting, agreeing, teasing, changing subject.` : ""}${(due.length && !["A1","A2"].includes(settings.level)) ? ` Where natural, include some of these study words: ${due.join(", ")}.` : ""}
 
 Then gloss EVERY content word in the passage (skip only articles, common particles and prepositions). For each, give: the exact surface form as it appears (lowercase), the dictionary lemma${langHasArticles()?" with its article":""}, a concise English translation as used in context, and optionally a short usage note.${activePack().glossExtra ? " " + activePack().glossExtra : ""}
 
@@ -1131,7 +1153,8 @@ function passageHTML(p){
       const k = known.has(w) ? " known" : "";
       return `<span class="word${k}" data-si="${si}" data-w="${esc(tok)}">${esc(tok)}</span>`;
     }).join("");
-    return `<span class="sentence" data-si="${si}">${htmlSent}</span> `;
+    const br = /^[\s]*—/.test(sentence) && si > 0 ? "<br>" : "";   // dialogue: one utterance per line
+    return `${br}<span class="sentence" data-si="${si}">${htmlSent}</span> `;
   }).join("");
 }
 
