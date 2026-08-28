@@ -67,7 +67,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = "v20";
+const APP_VERSION = "v21";
 const SPEEDS = { fast: 0.92, medium: 0.69, slow: 0.52 };
 function curRate(){ return SPEEDS[settings.speed] || SPEEDS.fast; }
 function wordRate(){ return curRate() * 0.9; }
@@ -318,7 +318,9 @@ const PROVIDERS = {
       });
       if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e?.error?.message||("HTTP "+res.status)); }
       const d = await res.json();
-      return d.content.filter(b=>b.type==="text").map(b=>b.text).join("\n");
+      const out = d.content.filter(b=>b.type==="text").map(b=>b.text).join("\n");
+      if(!out.trim() && d.stop_reason) throw new Error("the model returned no text (stop_reason: "+d.stop_reason+") — its token budget may have gone to internal reasoning; try again");
+      return out;
     },
     async vision(prompt, b64, media, maxTokens, model, key){
       const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -349,7 +351,11 @@ const PROVIDERS = {
       });
       if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e?.error?.message||("HTTP "+res.status)); }
       const d = await res.json();
-      return (d.candidates?.[0]?.content?.parts||[]).map(p=>p.text||"").join("\n");
+      const out = (d.candidates?.[0]?.content?.parts||[]).map(p=>p.text||"").join("\n");
+      const fin = d.candidates?.[0]?.finishReason;
+      if(!out.trim() && fin) throw new Error("the model returned no text (finishReason: "+fin+") — thinking models can spend the whole token budget reasoning; try again");
+      if(!out.trim() && d.promptFeedback?.blockReason) throw new Error("blocked by the provider ("+d.promptFeedback.blockReason+")");
+      return out;
     },
     async vision(prompt, b64, media, maxTokens, model, key){
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
@@ -378,7 +384,10 @@ const PROVIDERS = {
       });
       if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e?.error?.message||e?.error||("HTTP "+res.status)); }
       const d = await res.json();
-      return d.choices?.[0]?.message?.content || "";
+      const out = d.choices?.[0]?.message?.content || "";
+      const fin = d.choices?.[0]?.finish_reason;
+      if(!out.trim() && fin) throw new Error("the model returned no text (finish_reason: "+fin+") — reasoning models can spend the whole token budget thinking; try again");
+      return out;
     },
     async vision(prompt, b64, media, maxTokens, model, key){
       const base = (settings.baseUrl && settings.baseUrl.trim()) || "https://api.openai.com/v1";
@@ -412,7 +421,7 @@ async function callVision(prompt, b64, media, maxTokens){
 }
 // Robust JSON extraction — tolerates preamble, fences, trailing prose, trailing commas.
 function parseAIJSON(raw){
-  if(!raw || !raw.trim()) throw new Error("empty response (check API key / quota)");
+  if(!raw || !raw.trim()) throw new Error("empty response from the model — try again (thinking models sometimes spend their whole token budget reasoning)");
   let clean = raw.replace(/```json|```/g,"").trim();
   const firstObj = clean.indexOf("{"), firstArr = clean.indexOf("[");
   const cands = [firstObj, firstArr].filter(i=>i>=0);
@@ -898,7 +907,7 @@ async function photoGo(ev){
     const b64 = await fileToB64(file);
     const media = file.type || "image/jpeg";
     const ocrPrompt = `Extract ALL the ${langName()} text visible in this image, exactly as written, preserving line breaks. Return ONLY the extracted text with no commentary, translation, or markdown. If there is no ${langName()} text, return an empty response.`;
-    const text = await callVision(ocrPrompt, b64, media, 2000);
+    const text = await callVision(ocrPrompt, b64, media, 5000);
     if(!text || text.trim().length < 2){ genMsg = `No ${langName()} text found in that photo. Try a clearer, closer shot.`; genBusy=false; render(); return; }
     let ocr = text.trim();
     // Cap so the gloss JSON can't overflow the token limit (a full page can be too much at once)
@@ -953,15 +962,18 @@ Then gloss EVERY content word in the passage (skip only articles, common particl
 Respond ONLY with valid JSON, no markdown:
 {"title":"short ${L} title","text":"the passage","gloss":[["surface","lemma","translation","note or empty string"],...]}`;
   try{
-    const raw = await callClaude(prompt, 3500);
-    const p = parseAIJSON(raw);
+    const raw = await callClaude(prompt, 9000);
+    let p;
+    try{ p = parseAIJSON(raw); }
+    catch(e){ p = salvageGloss(raw); if(!p || !p.text) throw e; }
     const entry = {
       id: "gen-"+Date.now(), level: settings.level, topic, title: p.title, text: p.text, lang: activeLang(),
-      gloss: p.gloss.map(g => g.join("|")), cached: true, origin:"generated"
+      gloss: (p.gloss||[]).map(g => Array.isArray(g) ? g.join("|") : g), cached: true, origin:"generated"
     };
     customLib = [entry, ...customLib];
     save(LS.lib, customLib);
-    genMsg = ""; activeP = entry; lookupState = null;
+    genMsg = p.partial ? `Saved with ${entry.gloss.length} words glossed (some may be missing — tap any word to look it up).` : "";
+    activeP = entry; lookupState = null;
   }catch(e){ genMsg = "Generation failed: " + e.message; }
   genBusy = false; render();
 }
@@ -970,7 +982,7 @@ async function liveLookup(word, sentence, passage){
   lookupState = {surface: cleanWord(word).toLowerCase(), loading:true}; render();
   const prompt = `A ${langName()} learner tapped "${cleanWord(word)}" in: "${sentence}". Respond ONLY with JSON, no markdown: {"lemma":"dictionary form${langHasArticles()?" with article":""}","translation":"concise English meaning in this context","note":"one short usage/root note"}`;
   try{
-    const raw = await callClaude(prompt, 500);
+    const raw = await callClaude(prompt, 1500);
     const d = parseAIJSON(raw);
     lookupState = {surface: cleanWord(word).toLowerCase(), lemma:d.lemma, translation:d.translation, note:d.note||"", sentence};
     // cache into the passage gloss so it's offline next time
@@ -1045,7 +1057,7 @@ async function expandPractice(){
   const prompt = `You are building a graded vocabulary drill for a ${L} learner at CEFR level ${tier}. Suggest 50 NEW high-frequency, genuinely useful ${L} words appropriate for exactly this level — single dictionary items (an occasional fixed two-word phrase is fine), no proper nouns. ${langHasArticles()?"Nouns must include their article. ":""}${activePack().glossExtra?activePack().glossExtra+" ":""}Do NOT repeat any of these existing words: ${have.join(", ")}.
 Respond ONLY with valid JSON, no markdown: [["${L} word","concise English translation"],...]`;
   try{
-    const raw = await callAI(prompt, 3000);
+    const raw = await callAI(prompt, 6000);
     const arr = parseAIJSON(raw);
     if(!Array.isArray(arr)) throw new Error("unexpected response shape");
     const key = activeLang()+":"+tier;
