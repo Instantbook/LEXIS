@@ -67,7 +67,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = "v21";
+const APP_VERSION = "v22";
 const SPEEDS = { fast: 0.92, medium: 0.69, slow: 0.52 };
 function curRate(){ return SPEEDS[settings.speed] || SPEEDS.fast; }
 function wordRate(){ return curRate() * 0.9; }
@@ -141,9 +141,12 @@ async function initStorage(){
   // settings defaults / migrations
   const sd = { apiKey:"", model:"claude-sonnet-5", level:"B2", provider:"anthropic" };
   settings = Object.assign({}, sd, settings);
-  if(settings.model==="claude-sonnet-4-6") settings.model = "claude-sonnet-5";
   if(!settings.provider) settings.provider = "anthropic";
   if(!settings.models) settings.models = {};
+  // v22 migration: the multi-provider refactor read models from settings.models[provider],
+  // silently dropping the legacy settings.model choice. Carry it over so the model the
+  // user actually picked keeps being used.
+  if(settings.model && !settings.models.anthropic) settings.models.anthropic = settings.model;
 
   // prime memCache so synchronous save() has current values
   memCache[LS.deck]=deck; memCache[LS.lib]=customLib;
@@ -302,6 +305,29 @@ if("speechSynthesis" in window) speechSynthesis.getVoices(); // warm up voice li
 
 // ── Anthropic API (online mode, bring-your-own-key) ──
 // ── Provider registry: each defines endpoint, headers, request body, and response parsing ──
+// Shared Anthropic request: thinking disabled first (gloss/JSON tasks need no reasoning, and on
+// thinking-by-default models like Sonnet 5 an unbounded think can eat the whole max_tokens and
+// return zero text). If the model rejects the thinking parameter, retry once without it.
+async function anthropicFetch(body, key){
+  const doFetch = b => fetch("https://api.anthropic.com/v1/messages", {
+    method:"POST",
+    headers:{ "content-type":"application/json", "x-api-key":key,
+      "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
+    body: JSON.stringify(b)
+  });
+  let res = await doFetch({ ...body, thinking:{ type:"disabled" } });
+  if(res.status === 400){
+    const e = await res.json().catch(()=>({}));
+    const msg = e?.error?.message || "";
+    if(/thinking/i.test(msg)) res = await doFetch(body);          // model doesn't take the param — plain retry
+    else throw new Error(msg || "HTTP 400");
+  }
+  if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e?.error?.message||("HTTP "+res.status)); }
+  const d = await res.json();
+  const out = d.content.filter(b=>b.type==="text").map(b=>b.text).join("\n");
+  if(!out.trim() && d.stop_reason) throw new Error("the model returned no text (stop_reason: "+d.stop_reason+") — its token budget may have gone to internal reasoning; try again");
+  return out;
+}
 const PROVIDERS = {
   anthropic: {
     label: "Claude (Anthropic)",
@@ -310,30 +336,12 @@ const PROVIDERS = {
     keyUrl: "console.anthropic.com",
     note: "Best quality for glossing. Paid (pay-as-you-go).",
     async call(prompt, maxTokens, model, key){
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method:"POST",
-        headers:{ "content-type":"application/json", "x-api-key":key,
-          "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
-        body: JSON.stringify({ model, max_tokens:maxTokens||2000, messages:[{role:"user",content:prompt}] })
-      });
-      if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e?.error?.message||("HTTP "+res.status)); }
-      const d = await res.json();
-      const out = d.content.filter(b=>b.type==="text").map(b=>b.text).join("\n");
-      if(!out.trim() && d.stop_reason) throw new Error("the model returned no text (stop_reason: "+d.stop_reason+") — its token budget may have gone to internal reasoning; try again");
-      return out;
+      return anthropicFetch({ model, max_tokens:maxTokens||2000, messages:[{role:"user",content:prompt}] }, key);
     },
     async vision(prompt, b64, media, maxTokens, model, key){
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method:"POST",
-        headers:{ "content-type":"application/json", "x-api-key":key,
-          "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
-        body: JSON.stringify({ model, max_tokens:maxTokens||2000, messages:[{ role:"user", content:[
-          { type:"image", source:{ type:"base64", media_type:media, data:b64 } },
-          { type:"text", text:prompt } ] }] })
-      });
-      if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e?.error?.message||("HTTP "+res.status)); }
-      const d = await res.json();
-      return d.content.filter(b=>b.type==="text").map(b=>b.text).join("\n");
+      return anthropicFetch({ model, max_tokens:maxTokens||2000, messages:[{ role:"user", content:[
+        { type:"image", source:{ type:"base64", media_type:media, data:b64 } },
+        { type:"text", text:prompt } ] }] }, key);
     }
   },
   gemini: {
